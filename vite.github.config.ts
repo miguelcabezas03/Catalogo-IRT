@@ -4,7 +4,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/postcss';
 
 export default defineConfig({
-  base: process.env.GITHUB_ACTIONS === 'true' ? '/IRT/' : '/',
+  base: process.env.GITHUB_ACTIONS === 'true'
+    ? `/${process.env.GITHUB_REPOSITORY?.split('/').at(-1) || 'IRT'}/`
+    : '/',
   css: { postcss: { plugins: [tailwindcss()] } },
   resolve: { alias: { '@': path.resolve(process.cwd()) } },
   plugins: [react()],
