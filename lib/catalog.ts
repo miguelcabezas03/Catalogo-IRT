@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { createClient, type User } from '@supabase/supabase-js';
 
 export type UserRole = 'admin' | 'viewer';
@@ -26,9 +27,8 @@ export type CatalogImage = {
   isNew?: boolean;
 };
 
-const runtimeEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
-const supabaseUrl = runtimeEnv.VITE_SUPABASE_URL;
-const supabaseAnonKey = runtimeEnv.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isBackendConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const supabase = isBackendConfigured
