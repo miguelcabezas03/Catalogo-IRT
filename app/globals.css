@@ -39,8 +39,8 @@
 
 .brand-header { background: #0d2b49; box-shadow: inset 0 -1px 0 rgba(255,255,255,.08); }
 .brand-mark { display:grid; width:2.7rem; height:2.7rem; place-items:center; border:2px solid #2dc5c0; border-radius:999px; color:white; font-size:1.05rem; font-weight:700; letter-spacing:-.08em; box-shadow:0 0 0 4px rgba(45,197,192,.12); }
-.login-shell { min-height:100vh; display:grid; place-items:center; padding:1.5rem; background:radial-gradient(circle at 18% 18%,rgba(45,197,192,.18),transparent 30%),radial-gradient(circle at 82% 82%,rgba(217,20,113,.12),transparent 32%),#0d2b49; }
-.login-card { width:min(100%,31rem); border:1px solid rgba(255,255,255,.25); border-radius:1.5rem; background:rgba(255,255,255,.97); padding:2.25rem; box-shadow:0 30px 80px rgba(3,21,36,.35); }
+.login-shell { min-height:100vh; display:grid; place-items:center; padding:1.5rem; background:linear-gradient(135deg,#f3f7fc 0%,#e9f2f8 52%,#f8eef4 100%); }
+.login-card { width:min(100%,37rem); border:1px solid #d8e2ec; border-radius:1.5rem; background:rgba(255,255,255,.98); padding:3rem; box-shadow:0 28px 80px rgba(31,61,91,.14); }
 .login-card .brand-mark { background:#0d2b49; }
 .upload-progress { margin-bottom:1rem; border:1px solid #cde0e4; border-radius:1rem; background:#f3faf9; padding:1rem; }
 .control-panel { display:flex; align-items:end; gap:.85rem; border:1px solid #dbe4ea; border-radius:1rem; background:rgba(255,255,255,.84); padding:1rem; box-shadow:0 14px 40px rgba(15,48,75,.06); backdrop-filter:blur(12px); }

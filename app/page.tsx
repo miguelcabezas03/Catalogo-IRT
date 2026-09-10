@@ -12,14 +12,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { type CatalogImage, type ReviewStatus, type UserRole, getCurrentUser, isBackendConfigured, loadCatalog, saveReview as saveCatalogReview, signIn, signOut, supabase, uploadCatalogFiles } from '@/lib/catalog';
 
 const REVIEW_OPTIONS: ReviewStatus[] = ['Sin observaciones', 'Sin revisar', 'Borrosa', 'Mala calidad', 'Imagen incorrecta', 'Incompleta', 'Duplicada', 'Otra'];
-const DEMO_IMAGES: CatalogImage[] = [
-  { id: '1', name: 'CL_IMG001.jpg', country: 'Chile', countryCode: 'CL', folder: 'Chile / Bebidas', status: 'Sin observaciones', notes: '', updatedAt: 'Hoy, 09:42', createdDateTime: '2026-09-01T14:00:00Z' },
-  { id: '2', name: 'CR_IMG014.png', country: 'Costa Rica', countryCode: 'CR', folder: 'Costa Rica / Alimentos', status: 'Borrosa', notes: 'La etiqueta no se alcanza a leer con claridad.', updatedAt: 'Hoy, 09:31', createdDateTime: '2026-09-01T14:00:00Z' },
-  { id: '3', name: 'RD_IMG008.jpg', country: 'Rep. Dominicana', countryCode: 'RD', folder: 'Rep. Dominicana / Cuidado personal', status: 'Sin observaciones', notes: '', updatedAt: 'Ayer, 16:18', createdDateTime: '2026-09-01T14:00:00Z' },
-  { id: '4', name: 'SV_IMG021.jpg', country: 'El Salvador', countryCode: 'SV', folder: 'El Salvador / Bebidas', status: 'Mala calidad', notes: 'Tiene compresión y pérdida de detalle.', updatedAt: 'Ayer, 15:54', createdDateTime: '2026-09-01T14:00:00Z' },
-  { id: '5', name: 'GT_IMG032.jpg', country: 'Guatemala', countryCode: 'GT', folder: 'Guatemala / Alimentos', status: 'Sin revisar', notes: '', updatedAt: 'Nuevo', isNew: true, createdDateTime: '2026-09-08T14:00:00Z' },
-];
-
 function statusTone(status: ReviewStatus) {
   if (status === 'Sin observaciones') return 'good';
   if (status === 'Sin revisar') return 'pending';
@@ -45,6 +37,7 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const fileInput = useRef<HTMLInputElement>(null);
+  const openedLinkId = useRef<string | null>(null);
   const isAdmin = role === 'admin';
 
   useEffect(() => {
@@ -91,6 +84,14 @@ export default function Home() {
   const counts = useMemo(() => ({ total: images.length, correct: images.filter((item) => item.status === 'Sin observaciones').length, pending: images.filter((item) => item.status === 'Sin revisar').length, issues: images.filter((item) => !['Sin observaciones', 'Sin revisar'].includes(item.status)).length }), [images]);
 
   useEffect(() => {
+    if (!images.length) return;
+    const imageId = new URLSearchParams(window.location.search).get('imagen');
+    if (!imageId || openedLinkId.current === imageId) return;
+    const match = images.find((item) => item.id === imageId);
+    if (match) { openedLinkId.current = imageId; openImage(match); }
+  }, [images]);
+
+  useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: () => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> } }).modelContext;
     if (!context?.registerTool) return;
     const lifecycle = new AbortController();
@@ -115,7 +116,6 @@ export default function Home() {
   }
 
   async function handleLogout() { await signOut(); setRole(null); setImages([]); setUserEmail(''); }
-  function enterDemo(demoRole: UserRole) { setRole(demoRole); setUserEmail(demoRole === 'admin' ? 'admin@demo.local' : 'visualizador@demo.local'); setImages(DEMO_IMAGES); }
   function openImage(item: CatalogImage) { setSelected(item); setDraftStatus(item.status); setDraftNotes(item.notes); }
 
   async function saveReview() {
@@ -147,17 +147,20 @@ export default function Home() {
 
   async function exportExcel() {
     const XLSX = await import('xlsx');
-    const rows = filtered.map((item) => ({ País: item.country, Código: item.countryCode, Imagen: item.name, Carpeta: item.folder, Estado: item.status, Observaciones: item.notes, Actualización: item.updatedAt }));
-    const sheet = XLSX.utils.json_to_sheet(rows); sheet['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 24 }, { wch: 34 }, { wch: 22 }, { wch: 52 }, { wch: 18 }];
+    const pageUrl = `${window.location.origin}${window.location.pathname}`;
+    const rows = filtered.map((item) => ({ País: item.country, Código: item.countryCode, Imagen: item.name, Carpeta: item.folder, Estado: item.status, Observaciones: item.notes, Actualización: item.updatedAt, 'Ver imagen': `${pageUrl}?imagen=${encodeURIComponent(item.id)}` }));
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    rows.forEach((row, index) => { const cell = sheet[`H${index + 2}`]; if (cell) cell.l = { Target: row['Ver imagen'], Tooltip: 'Abrir imagen en Revisión IRT' }; });
+    sheet['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 24 }, { wch: 34 }, { wch: 22 }, { wch: 52 }, { wch: 18 }, { wch: 58 }];
     const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Revisión de imágenes'); XLSX.writeFile(workbook, `revision-imagenes-${new Date().toISOString().slice(0, 10)}.xlsx`); showNotice('Excel descargado con los filtros actuales.');
   }
 
   if (authLoading && !role) return <LoadingScreen />;
-  if (!role) return <LoginScreen username={username} password={password} setUsername={setUsername} setPassword={setPassword} onSubmit={handleLogin} onDemo={enterDemo} />;
+  if (!role) return <LoginScreen username={username} password={password} setUsername={setUsername} setPassword={setPassword} onSubmit={handleLogin} />;
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="brand-header"><div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 py-5 lg:px-8"><div className="flex items-center gap-3"><div className="brand-mark" aria-hidden="true">dn</div><div><p className="text-lg font-semibold leading-none tracking-tight text-white">Revisión IRT</p><p className="mt-1 text-sm text-white/65">Catálogo regional de imágenes</p></div></div><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-2 text-sm text-white/80 sm:flex"><UserRound className="size-4" /><span className="max-w-48 truncate">{userEmail}</span><Badge className={isAdmin ? 'bg-[#d91471] text-white' : 'bg-[#2dc5c0] text-[#09263f]'}>{isAdmin ? 'Administrador' : 'Visualizador'}</Badge></div><Button variant="ghost" onClick={() => void handleLogout()} className="text-white hover:bg-white/10 hover:text-white"><LogOut className="size-4" /><span className="hidden md:inline">Salir</span></Button></div></div></header>
+      <header className="brand-header"><div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 py-5 lg:px-8"><div className="flex items-center gap-3"><div className="brand-mark" aria-hidden="true">dn</div><div><p className="text-lg font-semibold leading-none tracking-tight text-white">Revisión IRT</p><p className="mt-1 text-sm text-white/65">Catálogo regional de imágenes</p></div></div><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-2 text-sm text-white/80 sm:flex"><UserRound className="size-4" /><span className="max-w-48 truncate">{userEmail}</span><Badge className={isAdmin ? 'bg-[#d91471] text-white' : 'bg-[#2dc5c0] text-[#09263f]'}>{isAdmin ? 'Administrador' : 'Visualizador'}</Badge></div><Button variant="ghost" onClick={() => void handleLogout()} className="border border-white/20 text-white hover:bg-white/10 hover:text-white"><LogOut className="size-4" /><span>Cerrar sesión</span></Button></div></div></header>
       <section className="mx-auto max-w-[1480px] px-5 py-7 lg:px-8 lg:py-9">
         <div className="mb-7 flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#d91471]"><Sparkles className="size-4" /> Control de calidad regional</div><h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.035em] text-[#102f4f] sm:text-4xl">Encuentra, revisa y documenta cada imagen</h1><p className="mt-2 max-w-2xl text-base text-muted-foreground">Busca por nombre, filtra por país y guarda observaciones compartidas.</p></div><div className="flex flex-wrap gap-3">{isAdmin && <><input ref={fileInput} type="file" multiple accept="image/*" className="sr-only" {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => void handleFolder(event.target.files)} /><Button variant="outline" disabled={uploading} onClick={() => fileInput.current?.click()} className="h-11 rounded-xl border-[#9ab1c4] bg-white px-5 text-[#102f4f]"><FolderOpen /> {uploading ? 'Sincronizando…' : 'Seleccionar carpeta'}</Button></>}<Button onClick={exportExcel} className="h-11 rounded-xl bg-[#d91471] px-5 text-white shadow-[0_10px_25px_rgba(217,20,113,.22)] hover:bg-[#bd0e61]"><Download /> Descargar Excel</Button></div></div>
         {uploading && <div className="upload-progress"><div className="flex items-center justify-between text-sm"><span className="flex items-center gap-2 font-semibold text-[#102f4f]"><Upload className="size-4 text-[#d91471]" /> Sincronizando carpeta</span><span>{uploadProgress.total ? `${uploadProgress.done} / ${uploadProgress.total}` : 'Leyendo imágenes…'}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dce7ec]"><div className="h-full rounded-full bg-[#2aa5a2] transition-all" style={{ width: uploadProgress.total ? `${(uploadProgress.done / uploadProgress.total) * 100}%` : '12%' }} /></div></div>}
@@ -201,8 +204,8 @@ export default function Home() {
   );
 }
 
-function LoginScreen({ username, password, setUsername, setPassword, onSubmit, onDemo }: { username: string; password: string; setUsername: (value: string) => void; setPassword: (value: string) => void; onSubmit: (event: React.FormEvent) => void; onDemo: (role: UserRole) => void }) {
-  return <main className="login-shell"><section className="login-card"><div className="brand-mark mx-auto" aria-hidden="true">dn</div><p className="mt-5 text-center text-sm font-semibold uppercase tracking-[.18em] text-[#2aa5a2]">Dichter & Neira</p><h1 className="mt-2 text-center text-3xl font-semibold tracking-tight text-[#102f4f]">Revisión IRT</h1><p className="mx-auto mt-2 max-w-sm text-center text-sm text-muted-foreground">Ingresa con el usuario asignado. Ambos perfiles pueden guardar observaciones; solo el administrador puede sincronizar imágenes.</p>{isBackendConfigured ? <form onSubmit={onSubmit} className="mt-8 space-y-4"><label className="block"><span className="mb-1.5 block text-sm font-semibold text-[#29475f]">Usuario</span><Input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="admin o visualizador" className="h-12 rounded-xl" /></label><label className="block"><span className="mb-1.5 block text-sm font-semibold text-[#29475f]">Contraseña</span><Input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-12 rounded-xl" /></label><Button type="submit" className="h-12 w-full rounded-xl bg-[#d91471] text-white hover:bg-[#bd0e61]">Ingresar</Button></form> : <div className="mt-8 rounded-2xl border border-[#cde0e4] bg-[#f3faf9] p-4"><p className="text-sm font-semibold text-[#153b5d]">Vista de demostración</p><p className="mt-1 text-xs text-muted-foreground">Conecta Supabase para activar las cuentas reales y guardar la información.</p><div className="mt-4 grid gap-2 sm:grid-cols-2"><Button onClick={() => onDemo('viewer')} variant="outline" className="h-11 rounded-xl">Ver como visualizador</Button><Button onClick={() => onDemo('admin')} className="h-11 rounded-xl bg-[#153b5d]">Ver como admin</Button></div></div>}</section></main>;
+function LoginScreen({ username, password, setUsername, setPassword, onSubmit }: { username: string; password: string; setUsername: (value: string) => void; setPassword: (value: string) => void; onSubmit: (event: React.FormEvent) => void }) {
+  return <main className="login-shell"><section className="login-card"><div className="brand-mark" aria-hidden="true">dn</div><div className="mt-8 border-t border-[#dce5ed] pt-8"><p className="text-xs font-bold uppercase tracking-[.18em] text-[#2aa5a2]">Acceso al catálogo IRT</p><h1 className="mt-4 text-4xl font-bold tracking-tight text-[#102f4f]">Bienvenido</h1><p className="mt-4 text-base leading-7 text-muted-foreground">Ingresa con el usuario asignado para consultar y revisar el catálogo compartido.</p></div>{isBackendConfigured ? <form onSubmit={onSubmit} className="mt-8 space-y-5"><label className="block"><span className="mb-2 block text-sm font-semibold text-[#29475f]">Nombre de usuario</span><Input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Admin o Visualizador" className="h-14 rounded-xl border-[#cbd9e7] bg-[#edf4ff] px-5 text-lg" /></label><label className="block"><span className="mb-2 block text-sm font-semibold text-[#29475f]">Contraseña</span><Input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-14 rounded-xl border-[#cbd9e7] bg-[#edf4ff] px-5 text-lg" /></label><Button type="submit" className="h-14 w-full rounded-xl bg-[#d91471] text-base font-semibold text-white shadow-lg hover:bg-[#bd0e61]">Ingresar al catálogo <ChevronRight className="ml-2 size-5" /></Button></form> : <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5"><p className="font-semibold text-amber-900">Configuración pendiente</p><p className="mt-1 text-sm leading-6 text-amber-800">La base compartida todavía no está conectada. Por seguridad, el modo de demostración fue desactivado.</p></div>}<p className="mt-8 border-t border-[#dce5ed] pt-6 text-sm text-muted-foreground">¿Necesitas acceso? Contacta al administrador del catálogo.</p></section></main>;
 }
 
 function LoadingScreen() { return <main className="login-shell"><div className="flex flex-col items-center text-[#102f4f]"><LoaderCircle className="size-9 animate-spin text-[#2aa5a2]" /><p className="mt-3 text-sm font-semibold">Abriendo el catálogo…</p></div></main>; }
