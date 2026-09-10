@@ -143,7 +143,9 @@ function normalizePath(path: string) {
 }
 
 export async function uploadCatalogFiles(files: File[], onProgress: (done: number, total: number) => void) {
-  if (!supabase) throw new Error('Supabase todavía no está configurado.');
+  const client = supabase;
+  if (!client) throw new Error('Supabase todavía no está configurado.');
+  const configuredClient = client;
   const entries = files.filter((file) => /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name));
   if (!entries.length) throw new Error('La carpeta no contiene imágenes compatibles.');
 
@@ -151,32 +153,46 @@ export async function uploadCatalogFiles(files: File[], onProgress: (done: numbe
   const existingByPath = new Map(existing.map((row) => [String(row.file_path), row]));
   const firstUpload = existingByPath.size === 0;
 
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    const originalPath = entry.webkitRelativePath || entry.name;
-    const relativePath = normalizePath(originalPath.split('/').slice(1).join('/') || entry.name);
-    const storagePath = `catalog/${relativePath}`;
-    const previous = existingByPath.get(relativePath);
-    const country = inferCountry(relativePath);
-    const { error: storageError } = await supabase.storage.from('catalog-images').upload(storagePath, entry, {
-      upsert: true,
-      contentType: entry.type || undefined,
-      cacheControl: '3600',
-    });
-    if (storageError) throw storageError;
-    const { error: rowError } = await supabase.from('catalog_images').upsert({
-      id: previous?.id ?? crypto.randomUUID(),
-      file_name: relativePath.split('/').at(-1),
-      file_path: relativePath,
-      storage_path: storagePath,
-      country: country.country,
-      country_code: country.code,
-      review_status: previous?.review_status ?? (firstUpload ? 'Sin observaciones' : 'Sin revisar'),
-      notes: previous?.notes ?? '',
-      updated_at: previous?.updated_at ?? new Date().toISOString(),
-    }, { onConflict: 'file_path' });
-    if (rowError) throw rowError;
-    onProgress(index + 1, entries.length);
+  const pendingRows: Record<string, unknown>[] = [];
+  let cursor = 0;
+  let completed = 0;
+
+  async function uploadNext() {
+    while (cursor < entries.length) {
+      const index = cursor;
+      cursor += 1;
+      const entry = entries[index];
+      const originalPath = entry.webkitRelativePath || entry.name;
+      const relativePath = normalizePath(originalPath.split('/').slice(1).join('/') || entry.name);
+      const storagePath = `catalog/${relativePath}`;
+      const previous = existingByPath.get(relativePath);
+      const country = inferCountry(relativePath);
+      const { error } = await configuredClient.storage.from('catalog-images').upload(storagePath, entry, {
+        upsert: true,
+        contentType: entry.type || undefined,
+        cacheControl: '3600',
+      });
+      if (error) throw error;
+      pendingRows.push({
+        id: previous?.id ?? crypto.randomUUID(),
+        file_name: relativePath.split('/').at(-1),
+        file_path: relativePath,
+        storage_path: storagePath,
+        country: country.country,
+        country_code: country.code,
+        review_status: previous?.review_status ?? (firstUpload ? 'Sin observaciones' : 'Sin revisar'),
+        notes: previous?.notes ?? '',
+        updated_at: previous?.updated_at ?? new Date().toISOString(),
+      });
+      completed += 1;
+      onProgress(completed, entries.length);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(8, entries.length) }, () => uploadNext()));
+  for (let index = 0; index < pendingRows.length; index += 200) {
+    const { error } = await configuredClient.from('catalog_images').upsert(pendingRows.slice(index, index + 200), { onConflict: 'file_path' });
+    if (error) throw error;
   }
   return entries.length;
 }
