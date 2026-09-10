@@ -1,5 +1,4 @@
 import { createClient, type User } from '@supabase/supabase-js';
-import JSZip from 'jszip';
 
 export type UserRole = 'admin' | 'viewer';
 export type ReviewStatus =
@@ -60,8 +59,28 @@ function rowToImage(row: Record<string, unknown>, imageUrl?: string): CatalogIma
   };
 }
 
-export async function signIn(email: string, password: string) {
+async function loadAllCatalogRows(): Promise<Record<string, unknown>[]> {
+  if (!supabase) return [];
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('catalog_images')
+      .select('*')
+      .order('file_name')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+export async function signIn(username: string, password: string) {
   if (!supabase) throw new Error('Supabase todavía no está configurado.');
+  const normalized = username.trim().toLowerCase();
+  const email = normalized.includes('@') ? normalized : `${normalized}@irt.local`;
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return data.user;
@@ -82,22 +101,27 @@ export async function getCurrentUser(): Promise<{ user: User; role: UserRole } |
 
 export async function loadCatalog(): Promise<CatalogImage[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('catalog_images').select('*').order('file_name');
-  if (error) throw error;
-  if (!data?.length) return [];
-  const paths = data.map((row) => row.storage_path);
-  const { data: signed, error: signedError } = await supabase.storage.from('catalog-images').createSignedUrls(paths, 3600);
-  if (signedError) throw signedError;
-  return data.map((row, index) => rowToImage(row, signed[index]?.signedUrl ?? undefined));
+  const rows = await loadAllCatalogRows();
+  if (!rows.length) return [];
+  const signedByPath = new Map<string, string>();
+  for (let index = 0; index < rows.length; index += 100) {
+    const paths = rows.slice(index, index + 100).map((row) => String(row.storage_path));
+    const { data: signed, error } = await supabase.storage.from('catalog-images').createSignedUrls(paths, 86400);
+    if (error) throw error;
+    for (const item of signed ?? []) {
+      if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
+    }
+  }
+  return rows.map((row) => rowToImage(row, signedByPath.get(String(row.storage_path))));
 }
 
 export async function saveReview(image: CatalogImage) {
   if (!supabase) return;
-  const { error } = await supabase.from('catalog_images').update({
-    review_status: image.status,
-    notes: image.notes,
-    updated_at: new Date().toISOString(),
-  }).eq('id', image.id);
+  const { error } = await supabase.rpc('save_catalog_review', {
+    p_id: image.id,
+    p_status: image.status,
+    p_notes: image.notes,
+  });
   if (error) throw error;
 }
 
@@ -118,27 +142,25 @@ function normalizePath(path: string) {
   return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\.\./g, '').replace(/[^\p{L}\p{N}._\-/ ]/gu, '_');
 }
 
-export async function uploadCatalogZip(file: File, onProgress: (done: number, total: number) => void) {
+export async function uploadCatalogFiles(files: File[], onProgress: (done: number, total: number) => void) {
   if (!supabase) throw new Error('Supabase todavía no está configurado.');
-  const zip = await JSZip.loadAsync(file);
-  const entries = Object.values(zip.files).filter((entry) => !entry.dir && /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(entry.name));
-  if (!entries.length) throw new Error('El ZIP no contiene imágenes compatibles.');
+  const entries = files.filter((file) => /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name));
+  if (!entries.length) throw new Error('La carpeta no contiene imágenes compatibles.');
 
-  const { data: existing, error: existingError } = await supabase.from('catalog_images').select('*');
-  if (existingError) throw existingError;
-  const existingByPath = new Map((existing ?? []).map((row) => [row.file_path, row]));
+  const existing = await loadAllCatalogRows();
+  const existingByPath = new Map(existing.map((row) => [String(row.file_path), row]));
   const firstUpload = existingByPath.size === 0;
 
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    const relativePath = normalizePath(entry.name);
+    const originalPath = entry.webkitRelativePath || entry.name;
+    const relativePath = normalizePath(originalPath.split('/').slice(1).join('/') || entry.name);
     const storagePath = `catalog/${relativePath}`;
-    const blob = await entry.async('blob');
     const previous = existingByPath.get(relativePath);
     const country = inferCountry(relativePath);
-    const { error: storageError } = await supabase.storage.from('catalog-images').upload(storagePath, blob, {
+    const { error: storageError } = await supabase.storage.from('catalog-images').upload(storagePath, entry, {
       upsert: true,
-      contentType: blob.type || undefined,
+      contentType: entry.type || undefined,
       cacheControl: '3600',
     });
     if (storageError) throw storageError;
