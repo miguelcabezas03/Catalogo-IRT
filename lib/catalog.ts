@@ -142,6 +142,14 @@ function normalizePath(path: string) {
   return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\.\./g, '').replace(/[^\p{L}\p{N}._\-/ ]/gu, '_');
 }
 
+function toStorageKey(path: string) {
+  return path
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9._\-/]/g, '_')
+    .replace(/_+/g, '_');
+}
+
 export async function uploadCatalogFiles(files: File[], onProgress: (done: number, total: number) => void) {
   const client = supabase;
   if (!client) throw new Error('Supabase todavía no está configurado.');
@@ -164,7 +172,7 @@ export async function uploadCatalogFiles(files: File[], onProgress: (done: numbe
       const entry = entries[index];
       const originalPath = entry.webkitRelativePath || entry.name;
       const relativePath = normalizePath(originalPath.split('/').slice(1).join('/') || entry.name);
-      const storagePath = `catalog/${relativePath}`;
+      const storagePath = `catalog/${toStorageKey(relativePath)}`;
       const previous = existingByPath.get(relativePath);
       const country = inferCountry(relativePath);
       const { error } = await configuredClient.storage.from('catalog-images').upload(storagePath, entry, {
