@@ -102,17 +102,21 @@ export async function getCurrentUser(): Promise<{ user: User; role: UserRole } |
 export async function loadCatalog(): Promise<CatalogImage[]> {
   if (!supabase) return [];
   const rows = await loadAllCatalogRows();
-  if (!rows.length) return [];
+  return rows.map((row) => rowToImage(row));
+}
+
+export async function hydrateImageUrls(images: CatalogImage[], expiresIn = 86400): Promise<CatalogImage[]> {
+  if (!supabase || !images.length) return images;
   const signedByPath = new Map<string, string>();
-  for (let index = 0; index < rows.length; index += 100) {
-    const paths = rows.slice(index, index + 100).map((row) => String(row.storage_path));
-    const { data: signed, error } = await supabase.storage.from('catalog-images').createSignedUrls(paths, 86400);
+  for (let index = 0; index < images.length; index += 100) {
+    const paths = images.slice(index, index + 100).map((image) => String(image.storagePath));
+    const { data: signed, error } = await supabase.storage.from('catalog-images').createSignedUrls(paths, expiresIn);
     if (error) throw error;
     for (const item of signed ?? []) {
       if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
     }
   }
-  return rows.map((row) => rowToImage(row, signedByPath.get(String(row.storage_path))));
+  return images.map((image) => ({ ...image, imageUrl: signedByPath.get(String(image.storagePath)) ?? image.imageUrl }));
 }
 
 export async function saveReview(image: CatalogImage) {
@@ -125,17 +129,27 @@ export async function saveReview(image: CatalogImage) {
   if (error) throw error;
 }
 
+function countryToken(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
+function countryFromFolder(folder: string) {
+  const token = countryToken(folder);
+  if (COUNTRY_BY_CODE[token]) return { code: token, country: COUNTRY_BY_CODE[token] };
+  const match = Object.entries(COUNTRY_BY_CODE).find(([, name]) => countryToken(name) === token);
+  if (match) return { code: match[0], country: match[1] };
+  if (['DOMINICANA', 'REPUBLICADOMINICANA'].includes(token)) return { code: 'RD', country: COUNTRY_BY_CODE.RD };
+  return null;
+}
+
 function inferCountry(path: string) {
   const parts = path.split('/').filter(Boolean);
   const filename = parts.at(-1) ?? path;
-  const prefix = filename.match(/^([A-Za-z]{2})[_\- ]/)?.[1]?.toUpperCase();
+  const prefixCandidate = filename.match(/^([A-Za-z]{2})/)?.[1]?.toUpperCase();
+  const prefix = prefixCandidate && COUNTRY_BY_CODE[prefixCandidate] ? prefixCandidate : undefined;
   if (prefix && COUNTRY_BY_CODE[prefix]) return { code: prefix, country: COUNTRY_BY_CODE[prefix] };
-  const folder = parts.slice(0, -1).find((part) => {
-    const normalized = part.toLocaleLowerCase('es');
-    return Object.values(COUNTRY_BY_CODE).some((name) => normalized.includes(name.toLocaleLowerCase('es')));
-  });
-  const match = folder && Object.entries(COUNTRY_BY_CODE).find(([, name]) => folder.toLocaleLowerCase('es').includes(name.toLocaleLowerCase('es')));
-  return match ? { code: match[0], country: match[1] } : { code: prefix ?? 'OT', country: parts.at(-2) ?? 'Otro' };
+  const folderCountry = parts.slice(0, -1).map(countryFromFolder).find(Boolean);
+  return folderCountry ?? { code: 'OT', country: parts.at(-2) ?? 'Otro' };
 }
 
 function normalizePath(path: string) {
@@ -150,6 +164,15 @@ function toStorageKey(path: string) {
     .replace(/_+/g, '_');
 }
 
+function relativeCatalogPath(originalPath: string, fallbackName: string) {
+  const parts = normalizePath(originalPath).split('/').filter(Boolean);
+  if (parts.length <= 1) return parts[0] || fallbackName;
+  // El navegador siempre incluye la carpeta seleccionada como primer segmento.
+  // Si esa carpeta ya es un país (CR, PANAMÁ, Costa Rica…), se conserva;
+  // si es la carpeta general del catálogo, se elimina solamente ese nivel.
+  return (countryFromFolder(parts[0]) ? parts : parts.slice(1)).join('/') || fallbackName;
+}
+
 export async function uploadCatalogFiles(files: File[], onProgress: (done: number, total: number) => void) {
   const client = supabase;
   if (!client) throw new Error('Supabase todavía no está configurado.');
@@ -161,46 +184,60 @@ export async function uploadCatalogFiles(files: File[], onProgress: (done: numbe
   const existingByPath = new Map(existing.map((row) => [String(row.file_path), row]));
   const firstUpload = existingByPath.size === 0;
 
-  const pendingRows: Record<string, unknown>[] = [];
-  let cursor = 0;
   let completed = 0;
+  const failedFiles: string[] = [];
 
-  async function uploadNext() {
-    while (cursor < entries.length) {
-      const index = cursor;
-      cursor += 1;
-      const entry = entries[index];
-      const originalPath = entry.webkitRelativePath || entry.name;
-      const relativePath = normalizePath(originalPath.split('/').slice(1).join('/') || entry.name);
-      const storagePath = `catalog/${toStorageKey(relativePath)}`;
-      const previous = existingByPath.get(relativePath);
-      const country = inferCountry(relativePath);
-      const { error } = await configuredClient.storage.from('catalog-images').upload(storagePath, entry, {
-        upsert: true,
-        contentType: entry.type || undefined,
-        cacheControl: '3600',
-      });
+  for (let batchStart = 0; batchStart < entries.length; batchStart += 100) {
+    const batch = entries.slice(batchStart, batchStart + 100);
+    const pendingRows: Record<string, unknown>[] = [];
+    let cursor = 0;
+
+    async function uploadNext() {
+      while (cursor < batch.length) {
+        const index = cursor;
+        cursor += 1;
+        const entry = batch[index];
+        const originalPath = entry.webkitRelativePath || entry.name;
+        const relativePath = relativeCatalogPath(originalPath, entry.name);
+        const storagePath = `catalog/${toStorageKey(relativePath)}`;
+        const previous = existingByPath.get(relativePath);
+        const country = inferCountry(relativePath);
+        let uploadError: Error | null = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const { error } = await configuredClient.storage.from('catalog-images').upload(storagePath, entry, {
+            upsert: true,
+            contentType: entry.type || undefined,
+            cacheControl: '3600',
+          });
+          if (!error) { uploadError = null; break; }
+          uploadError = error;
+          if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+        }
+        if (uploadError) {
+          failedFiles.push(`${relativePath}: ${uploadError.message}`);
+        } else {
+          pendingRows.push({
+            id: previous?.id ?? crypto.randomUUID(),
+            file_name: relativePath.split('/').at(-1),
+            file_path: relativePath,
+            storage_path: storagePath,
+            country: country.country,
+            country_code: country.code,
+            review_status: previous?.review_status ?? (firstUpload ? 'Sin observaciones' : 'Sin revisar'),
+            notes: previous?.notes ?? '',
+            updated_at: previous?.updated_at ?? new Date().toISOString(),
+          });
+        }
+        completed += 1;
+        onProgress(completed, entries.length);
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(4, batch.length) }, () => uploadNext()));
+    if (pendingRows.length) {
+      const { error } = await configuredClient.from('catalog_images').upsert(pendingRows, { onConflict: 'file_path' });
       if (error) throw error;
-      pendingRows.push({
-        id: previous?.id ?? crypto.randomUUID(),
-        file_name: relativePath.split('/').at(-1),
-        file_path: relativePath,
-        storage_path: storagePath,
-        country: country.country,
-        country_code: country.code,
-        review_status: previous?.review_status ?? (firstUpload ? 'Sin observaciones' : 'Sin revisar'),
-        notes: previous?.notes ?? '',
-        updated_at: previous?.updated_at ?? new Date().toISOString(),
-      });
-      completed += 1;
-      onProgress(completed, entries.length);
     }
   }
-
-  await Promise.all(Array.from({ length: Math.min(8, entries.length) }, () => uploadNext()));
-  for (let index = 0; index < pendingRows.length; index += 200) {
-    const { error } = await configuredClient.from('catalog_images').upsert(pendingRows.slice(index, index + 200), { onConflict: 'file_path' });
-    if (error) throw error;
-  }
-  return entries.length;
+  return { processed: entries.length - failedFiles.length, failed: failedFiles.length, firstError: failedFiles[0] };
 }
