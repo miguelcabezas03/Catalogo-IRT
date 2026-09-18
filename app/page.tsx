@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { type CatalogImage, type ReviewStatus, type UserRole, getCurrentUser, isBackendConfigured, loadCatalog, saveReview as saveCatalogReview, signIn, signOut, supabase, uploadCatalogFiles } from '@/lib/catalog';
+import { type CatalogImage, type ReviewStatus, type UserRole, getCurrentUser, hydrateImageUrls, isBackendConfigured, loadCatalog, saveReview as saveCatalogReview, signIn, signOut, supabase, uploadCatalogFiles } from '@/lib/catalog';
 
 const REVIEW_OPTIONS: ReviewStatus[] = ['Sin observaciones', 'Sin revisar', 'Borrosa', 'Mala calidad', 'Imagen incorrecta', 'Incompleta', 'Duplicada', 'Otra'];
 function statusTone(status: ReviewStatus) {
@@ -35,7 +35,9 @@ export default function Home() {
   const [notice, setNotice] = useState('');
   const [errorNotice, setErrorNotice] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
+  const [visibleLimit, setVisibleLimit] = useState(60);
   const fileInput = useRef<HTMLInputElement>(null);
   const openedLinkId = useRef<string | null>(null);
   const isAdmin = role === 'admin';
@@ -81,6 +83,7 @@ export default function Home() {
     const normalized = query.trim().toLowerCase();
     return images.filter((item) => (!normalized || item.name.toLowerCase().includes(normalized)) && (country === 'Todos' || item.country === country) && (status === 'Todas' || item.status === status));
   }, [country, images, query, status]);
+  const visibleImages = useMemo(() => filtered.slice(0, visibleLimit), [filtered, visibleLimit]);
   const counts = useMemo(() => ({ total: images.length, correct: images.filter((item) => item.status === 'Sin observaciones').length, pending: images.filter((item) => item.status === 'Sin revisar').length, issues: images.filter((item) => !['Sin observaciones', 'Sin revisar'].includes(item.status)).length }), [images]);
 
   useEffect(() => {
@@ -90,6 +93,21 @@ export default function Home() {
     const match = images.find((item) => item.id === imageId);
     if (match) { openedLinkId.current = imageId; openImage(match); }
   }, [images]);
+
+  useEffect(() => { setVisibleLimit(60); }, [country, query, status]);
+
+  useEffect(() => {
+    const missing = visibleImages.filter((item) => !item.imageUrl);
+    if (!missing.length) return;
+    let active = true;
+    void hydrateImageUrls(missing).then((hydrated) => {
+      if (!active) return;
+      const urls = new Map(hydrated.filter((item) => item.imageUrl).map((item) => [item.id, item.imageUrl]));
+      if (!urls.size) return;
+      setImages((current) => current.map((item) => urls.has(item.id) ? { ...item, imageUrl: urls.get(item.id) } : item));
+    }).catch((error) => showNotice(error instanceof Error ? error.message : 'No se pudieron cargar las vistas previas.', true));
+    return () => { active = false; };
+  }, [visibleImages]);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: () => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> } }).modelContext;
@@ -139,20 +157,32 @@ export default function Home() {
     if (!isBackendConfigured) { showNotice('La sincronización funciona al configurar Supabase; este es el modo de demostración.', true); return; }
     setUploading(true); setUploadProgress({ done: 0, total: 0 });
     try {
-      const total = await uploadCatalogFiles(Array.from(fileList), (done, count) => setUploadProgress({ done, total: count }));
-      setImages(await loadCatalog()); showNotice(`${total} imágenes procesadas correctamente.`);
+      const result = await uploadCatalogFiles(Array.from(fileList), (done, count) => setUploadProgress({ done, total: count }));
+      setImages(await loadCatalog());
+      if (result.failed) showNotice(`${result.processed} imágenes guardadas y ${result.failed} no pudieron cargarse. ${result.firstError ?? ''}`, true);
+      else showNotice(`${result.processed} imágenes procesadas correctamente.`);
     } catch (error) { showNotice(error instanceof Error ? error.message : 'No se pudo sincronizar la carpeta.', true); }
     finally { setUploading(false); if (fileInput.current) fileInput.current.value = ''; }
   }
 
   async function exportExcel() {
-    const XLSX = await import('xlsx');
-    const pageUrl = `${window.location.origin}${window.location.pathname}`;
-    const rows = filtered.map((item) => ({ País: item.country, Código: item.countryCode, Imagen: item.name, Carpeta: item.folder, Estado: item.status, Observaciones: item.notes, Actualización: item.updatedAt, 'Ver imagen': `${pageUrl}?imagen=${encodeURIComponent(item.id)}` }));
-    const sheet = XLSX.utils.json_to_sheet(rows);
-    rows.forEach((row, index) => { const cell = sheet[`H${index + 2}`]; if (cell) cell.l = { Target: row['Ver imagen'], Tooltip: 'Abrir imagen en Revisión IRT' }; });
-    sheet['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 24 }, { wch: 34 }, { wch: 22 }, { wch: 52 }, { wch: 18 }, { wch: 58 }];
-    const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Revisión de imágenes'); XLSX.writeFile(workbook, `revision-imagenes-${new Date().toISOString().slice(0, 10)}.xlsx`); showNotice('Excel descargado con los filtros actuales.');
+    setExporting(true);
+    try {
+      const [XLSX, imagesWithLinks] = await Promise.all([
+        import('xlsx'),
+        hydrateImageUrls(filtered, 30 * 24 * 60 * 60),
+      ]);
+      const rows = imagesWithLinks.map((item) => ({ País: item.country, Código: item.countryCode, Imagen: item.name, Carpeta: item.folder, Estado: item.status, Observaciones: item.notes, Actualización: item.updatedAt, 'Ver imagen': item.imageUrl ?? '' }));
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      rows.forEach((row, index) => { const cell = sheet[`H${index + 2}`]; if (cell && row['Ver imagen']) cell.l = { Target: row['Ver imagen'], Tooltip: 'Abrir la imagen directamente' }; });
+      sheet['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 24 }, { wch: 34 }, { wch: 22 }, { wch: 52 }, { wch: 18 }, { wch: 70 }];
+      const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Revisión de imágenes'); XLSX.writeFile(workbook, `revision-imagenes-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      showNotice('Excel descargado con enlaces directos válidos durante 30 días.');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : 'No se pudo preparar el Excel.', true);
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (authLoading && !role) return <LoadingScreen />;
@@ -162,12 +192,12 @@ export default function Home() {
     <main className="min-h-screen bg-background text-foreground">
       <header className="brand-header"><div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 py-5 lg:px-8"><div className="flex items-center gap-3"><div className="brand-mark" aria-hidden="true">dn</div><div><p className="text-lg font-semibold leading-none tracking-tight text-white">Revisión IRT</p><p className="mt-1 text-sm text-white/65">Catálogo regional de imágenes</p></div></div><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-2 text-sm text-white/80 sm:flex"><UserRound className="size-4" /><span className="max-w-48 truncate">{userEmail}</span><Badge className={isAdmin ? 'bg-[#d91471] text-white' : 'bg-[#2dc5c0] text-[#09263f]'}>{isAdmin ? 'Administrador' : 'Visualizador'}</Badge></div><Button variant="ghost" onClick={() => void handleLogout()} className="border border-white/20 text-white hover:bg-white/10 hover:text-white"><LogOut className="size-4" /><span>Cerrar sesión</span></Button></div></div></header>
       <section className="mx-auto max-w-[1480px] px-5 py-7 lg:px-8 lg:py-9">
-        <div className="mb-7 flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#d91471]"><Sparkles className="size-4" /> Control de calidad regional</div><h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.035em] text-[#102f4f] sm:text-4xl">Encuentra, revisa y documenta cada imagen</h1><p className="mt-2 max-w-2xl text-base text-muted-foreground">Busca por nombre, filtra por país y guarda observaciones compartidas.</p></div><div className="flex flex-wrap gap-3">{isAdmin && <><input ref={fileInput} type="file" multiple accept="image/*" className="sr-only" {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => void handleFolder(event.target.files)} /><Button variant="outline" disabled={uploading} onClick={() => fileInput.current?.click()} className="h-11 rounded-xl border-[#9ab1c4] bg-white px-5 text-[#102f4f]"><FolderOpen /> {uploading ? 'Sincronizando…' : 'Seleccionar carpeta'}</Button></>}<Button onClick={exportExcel} className="h-11 rounded-xl bg-[#d91471] px-5 text-white shadow-[0_10px_25px_rgba(217,20,113,.22)] hover:bg-[#bd0e61]"><Download /> Descargar Excel</Button></div></div>
+        <div className="mb-7 flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#d91471]"><Sparkles className="size-4" /> Control de calidad regional</div><h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.035em] text-[#102f4f] sm:text-4xl">Encuentra, revisa y documenta cada imagen</h1><p className="mt-2 max-w-2xl text-base text-muted-foreground">Busca por nombre, filtra por país y guarda observaciones compartidas.</p></div><div className="flex flex-wrap gap-3">{isAdmin && <><input ref={fileInput} type="file" multiple accept="image/*" className="sr-only" {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => void handleFolder(event.target.files)} /><Button variant="outline" disabled={uploading} onClick={() => fileInput.current?.click()} className="h-11 rounded-xl border-[#9ab1c4] bg-white px-5 text-[#102f4f]"><FolderOpen /> {uploading ? 'Sincronizando…' : 'Seleccionar carpeta'}</Button></>}<Button onClick={() => void exportExcel()} disabled={exporting || !filtered.length} className="h-11 rounded-xl bg-[#d91471] px-5 text-white shadow-[0_10px_25px_rgba(217,20,113,.22)] hover:bg-[#bd0e61]"><Download /> {exporting ? 'Preparando enlaces…' : 'Descargar Excel'}</Button></div></div>
         {uploading && <div className="upload-progress"><div className="flex items-center justify-between text-sm"><span className="flex items-center gap-2 font-semibold text-[#102f4f]"><Upload className="size-4 text-[#d91471]" /> Sincronizando carpeta</span><span>{uploadProgress.total ? `${uploadProgress.done} / ${uploadProgress.total}` : 'Leyendo imágenes…'}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dce7ec]"><div className="h-full rounded-full bg-[#2aa5a2] transition-all" style={{ width: uploadProgress.total ? `${(uploadProgress.done / uploadProgress.total) * 100}%` : '12%' }} /></div></div>}
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="Imágenes" value={counts.total} color="navy" /><Metric label="Sin observaciones" value={counts.correct} color="green" /><Metric label="Sin revisar" value={counts.pending} color="amber" /><Metric label="Con hallazgos" value={counts.issues} color="pink" /></div>
         <div className="control-panel"><div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-[#47627a]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre, por ejemplo IMG001" aria-label="Buscar imágenes" className="h-12 rounded-xl border-[#d6e0e8] bg-white pl-10 text-base shadow-sm" />{query && <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label="Limpiar búsqueda"><X className="size-4" /></button>}</div><FilterSelect label="País" value={country} options={countries} onChange={setCountry} /><FilterSelect label="Observación" value={status} options={['Todas', ...REVIEW_OPTIONS]} onChange={setStatus} /><Button variant="outline" onClick={() => setConfirmAll(true)} disabled={!filtered.length} className="h-12 rounded-xl border-[#9ab1c4] bg-white px-4 text-[#102f4f]"><CheckCircle2 /> Marcar visibles correctas</Button></div>
         <div className="mb-4 mt-7 flex items-center justify-between"><p className="text-sm font-medium text-[#47627a]"><span className="font-semibold text-[#102f4f]">{filtered.length}</span> resultados</p><p className="hidden text-sm text-muted-foreground sm:block">Haz clic en una imagen para abrirla</p></div>
-        {filtered.length ? <div className="image-grid">{filtered.map((item, index) => <button key={item.id} onClick={() => openImage(item)} className="image-card group text-left"><div className={`thumb thumb-${(index % 4) + 1}`}>{item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" /> : <><div className="thumb-code">{item.countryCode}</div><ImageIcon className="size-9 text-white/80" /><span className="text-sm font-medium text-white/75">Vista previa</span></>}<span className="expand-chip"><Expand className="size-4" /> Abrir</span></div><div className="p-4"><div className="mb-3 flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold text-[#102f4f]">{item.name}</p><p className="mt-1 truncate text-sm text-muted-foreground">{item.folder}</p></div><ChevronRight className="mt-0.5 size-5 shrink-0 text-[#8aa0b2]" /></div><div className="flex items-center justify-between gap-2"><span className={`status-pill status-${statusTone(item.status)}`}>{item.status}</span><span className="text-xs text-muted-foreground">{item.updatedAt}</span></div></div></button>)}</div> : <div className="empty-state"><Search className="size-9 text-[#8aa0b2]" /><h2 className="mt-4 text-lg font-semibold text-[#102f4f]">No encontramos imágenes</h2><p className="mt-1 text-sm text-muted-foreground">{images.length ? 'Prueba con otro nombre o cambia los filtros.' : 'El administrador todavía no ha sincronizado una carpeta.'}</p></div>}
+        {filtered.length ? <><div className="image-grid">{visibleImages.map((item, index) => <button key={item.id} onClick={() => openImage(item)} className="image-card group text-left"><div className={`thumb thumb-${(index % 4) + 1}`}>{item.imageUrl ? <img src={item.imageUrl} alt={item.name} loading="lazy" className="h-full w-full object-cover" /> : <><div className="thumb-code">{item.countryCode}</div><LoaderCircle className="size-8 animate-spin text-white/80" /><span className="text-sm font-medium text-white/75">Cargando vista…</span></>}<span className="expand-chip"><Expand className="size-4" /> Abrir</span></div><div className="p-4"><div className="mb-3 flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold text-[#102f4f]">{item.name}</p><p className="mt-1 truncate text-sm text-muted-foreground">{item.folder}</p></div><ChevronRight className="mt-0.5 size-5 shrink-0 text-[#8aa0b2]" /></div><div className="flex items-center justify-between gap-2"><span className={`status-pill status-${statusTone(item.status)}`}>{item.status}</span><span className="text-xs text-muted-foreground">{item.updatedAt}</span></div></div></button>)}</div>{visibleImages.length < filtered.length && <div className="mt-8 flex justify-center"><Button variant="outline" onClick={() => setVisibleLimit((current) => current + 60)} className="h-11 rounded-xl border-[#9ab1c4] bg-white px-6 text-[#102f4f]">Mostrar 60 más</Button></div>}</> : <div className="empty-state"><Search className="size-9 text-[#8aa0b2]" /><h2 className="mt-4 text-lg font-semibold text-[#102f4f]">No encontramos imágenes</h2><p className="mt-1 text-sm text-muted-foreground">{images.length ? 'Prueba con otro nombre o cambia los filtros.' : 'El administrador todavía no ha sincronizado una carpeta.'}</p></div>}
       </section>
       <footer className="mx-auto flex max-w-[1480px] flex-col gap-2 border-t px-5 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between lg:px-8"><span className="flex items-center gap-2"><ShieldCheck className="size-4 text-emerald-600" /> Acceso protegido por usuario y contraseña</span><span>Todos pueden revisar; solo el administrador sincroniza imágenes</span></footer>
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
