@@ -27,8 +27,8 @@ El estudio de cada imagen se obtiene de los maestros de Databricks. El cuaderno 
 
    La cuenta `visualizador@irt.local` queda automáticamente con el rol `viewer`. Si la versión anterior de la base de datos ya estaba configurada, ejecutar también [`supabase/upgrade_shared_reviews.sql`](supabase/upgrade_shared_reviews.sql).
 5. En GitHub abrir **Settings → Secrets and variables → Actions → Variables** y crear:
-   - `SUPABASE_URL: Project Settings → API → Project URL.
-   - `SUPABASE_ANON_KEY@: Project Settings → API → anon/public key. Esta clave es pública; nunca usar la `service_role` en GitHub.
+   - `SUPABASE_URL`: Project Settings → API → Project URL.
+   - `SUPABASE_ANON_KEY`: Project Settings → API → anon/public key. Esta clave es pública; nunca usar la `service_role` en GitHub.
 6. En **Settings → Pages**, elegir **GitHub Actions** como fuente de publicación.
 
 La primera sincronización deja las imágenes en **Sin observaciones**. En sincronizaciones posteriores, las imágenes nuevas quedan en **Sin revisar** y las ya existentes conservan su observación. Los cambios de ambos perfiles se actualizan en tiempo real y el Excel usa el estado visible más reciente.
@@ -37,4 +37,4 @@ Por seguridad del navegador no se puede guardar una ruta como `C:\Catalogos` ni 
 
 ## Desarrollo local
 
-Copiar `.env.example` como `.inv.local`, completar los datos públicos de Supabase y ejecutar `pnpm dev`. Sin esas variables, la aplicación abre un modo de demostración para comprobar ambos roles.
+Copiar `.env.example` como `.env.local`, completar los datos públicos de Supabase y ejecutar `pnpm dev`. Sin esas variables, la aplicación muestra un aviso de configuración pendiente.
