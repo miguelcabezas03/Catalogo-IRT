@@ -1,6 +1,6 @@
 # Revisión IRT
 
-Aplicación para sincronizar una carpeta de imágenes del computador, buscar por nombre, filtrar por país y observación, revisar hallazgos y descargar el resultado en Excel.
+Aplicación para sincronizar una carpeta de imágenes del computador, buscar por nombre, filtrar por país, estudio y observación, revisar hallazgos y descargar el resultado en Excel.
 
 ## Permisos
 
@@ -9,10 +9,13 @@ Aplicación para sincronizar una carpeta de imágenes del computador, buscar por
 
 Las contraseñas no se guardan en GitHub. La autenticación, las imágenes y las observaciones se almacenan en Supabase.
 
+El estudio de cada imagen se obtiene de los maestros de Databricks. El cuaderno consolida las fuentes, normaliza el código de imagen y sincroniza el resultado con `public.imagen_estudios`. La página permite filtrar coincidencias múltiples y también muestra **Sin estudio identificado** cuando el código aún no aparece en los maestros. El Excel exportado incluye la columna **Estudio**.
+
 ## Configuración inicial
 
 1. Crear un proyecto gratuito en Supabase.
 2. Abrir **SQL Editor**, copiar y ejecutar [`supabase/setup.sql`](supabase/setup.sql).
+   Para habilitar la integración de estudios, ejecutar también [`supabase/setup_image_studies.sql`](supabase/setup_image_studies.sql).
 3. En **Authentication → Users**, crear `admin@irt.local` y `visualizador@irt.local`, cada uno con su propia contraseña y confirmación automática. En la página se inicia sesión usando solamente `admin` o `visualizador`.
 4. Ejecutar esta instrucción en **SQL Editor** para asignar el rol administrador:
 
@@ -24,8 +27,8 @@ Las contraseñas no se guardan en GitHub. La autenticación, las imágenes y las
 
    La cuenta `visualizador@irt.local` queda automáticamente con el rol `viewer`. Si la versión anterior de la base de datos ya estaba configurada, ejecutar también [`supabase/upgrade_shared_reviews.sql`](supabase/upgrade_shared_reviews.sql).
 5. En GitHub abrir **Settings → Secrets and variables → Actions → Variables** y crear:
-   - `SUPABASE_URL`: Project Settings → API → Project URL.
-   - `SUPABASE_ANON_KEY`: Project Settings → API → anon/public key. Esta clave es pública; nunca usar la `service_role` en GitHub.
+   - `SUPABASE_URL: Project Settings → API → Project URL.
+   - `SUPABASE_ANON_KEY@: Project Settings → API → anon/public key. Esta clave es pública; nunca usar la `service_role` en GitHub.
 6. En **Settings → Pages**, elegir **GitHub Actions** como fuente de publicación.
 
 La primera sincronización deja las imágenes en **Sin observaciones**. En sincronizaciones posteriores, las imágenes nuevas quedan en **Sin revisar** y las ya existentes conservan su observación. Los cambios de ambos perfiles se actualizan en tiempo real y el Excel usa el estado visible más reciente.
@@ -34,4 +37,4 @@ Por seguridad del navegador no se puede guardar una ruta como `C:\Catalogos` ni 
 
 ## Desarrollo local
 
-Copiar `.env.example` como `.env.local`, completar los datos públicos de Supabase y ejecutar `pnpm dev`. Sin esas variables, la aplicación abre un modo de demostración para comprobar ambos roles.
+Copiar `.env.example` como `.inv.local`, completar los datos públicos de Supabase y ejecutar `pnpm dev`. Sin esas variables, la aplicación abre un modo de demostración para comprobar ambos roles.
