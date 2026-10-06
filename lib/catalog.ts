@@ -25,7 +25,10 @@ export type CatalogImage = {
   imageUrl?: string;
   storagePath?: string;
   isNew?: boolean;
+  studies: string[];
 };
+
+export const NO_STUDY = 'Sin estudio identificado';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -42,7 +45,12 @@ const COUNTRY_BY_CODE: Record<string, string> = {
   PE: 'Perú', PR: 'Puerto Rico', PY: 'Paraguay', SV: 'El Salvador', UY: 'Uruguay', VE: 'Venezuela',
 };
 
-function rowToImage(row: Record<string, unknown>, imageUrl?: string): CatalogImage {
+function normalizeImageCode(value: string) {
+  const filename = value.replace(/\\/g, '/').split('/').at(-1) ?? value;
+  return filename.trim().replace(/\.(jpe?g|png|webp|gif|bmp|avif)$/i, '').toUpperCase();
+}
+
+function rowToImage(row: Record<string, unknown>, studies: string[] = [], imageUrl?: string): CatalogImage {
   return {
     id: String(row.id),
     name: String(row.file_name),
@@ -56,6 +64,7 @@ function rowToImage(row: Record<string, unknown>, imageUrl?: string): CatalogIma
     storagePath: String(row.storage_path),
     imageUrl,
     isNew: row.review_status === 'Sin revisar',
+    studies,
   };
 }
 
@@ -75,6 +84,52 @@ async function loadAllCatalogRows(): Promise<Record<string, unknown>[]> {
     if (page.length < pageSize) break;
   }
   return rows;
+}
+
+async function loadStudyMap(): Promise<Map<string, string[]>> {
+  const studyMap = new Map<string, Set<string>>();
+  if (!supabase) return new Map();
+  const pageSize = 1000;
+  const addRows = (rows: { codigo_imagen: unknown; estudio: unknown }[]) => {
+    for (const row of rows) {
+      const code = normalizeImageCode(String(row.codigo_imagen ?? ''));
+      const study = String(row.estudio ?? '').trim();
+      if (!code || !study) continue;
+      const studies = studyMap.get(code) ?? new Set<string>();
+      studies.add(study);
+      studyMap.set(code, studies);
+    }
+  };
+
+  const firstResult = await supabase
+    .from('imagen_estudios')
+    .select('codigo_imagen,estudio', { count: 'exact' })
+    .order('codigo_imagen')
+    .order('estudio')
+    .range(0, pageSize - 1);
+  if (firstResult.error) throw firstResult.error;
+  addRows(firstResult.data ?? []);
+
+  const total = firstResult.count ?? firstResult.data?.length ?? 0;
+  const concurrentPages = 6;
+  for (let batchStart = pageSize; batchStart < total; batchStart += pageSize * concurrentPages) {
+    const offsets = Array.from(
+      { length: Math.min(concurrentPages, Math.ceil((total - batchStart) / pageSize)) },
+      (_, index) => batchStart + index * pageSize,
+    );
+    const results = await Promise.all(offsets.map((from) => supabase
+      .from('imagen_estudios')
+      .select('codigo_imagen,estudio')
+      .order('codigo_imagen')
+      .order('estudio')
+      .range(from, from + pageSize - 1)));
+    for (const result of results) {
+      if (result.error) throw result.error;
+      addRows(result.data ?? []);
+    }
+  }
+
+  return new Map(Array.from(studyMap, ([code, studies]) => [code, Array.from(studies).sort()]));
 }
 
 export async function signIn(username: string, password: string) {
@@ -101,8 +156,11 @@ export async function getCurrentUser(): Promise<{ user: User; role: UserRole } |
 
 export async function loadCatalog(): Promise<CatalogImage[]> {
   if (!supabase) return [];
-  const rows = await loadAllCatalogRows();
-  return rows.map((row) => rowToImage(row));
+  const [rows, studyMap] = await Promise.all([loadAllCatalogRows(), loadStudyMap()]);
+  return rows.map((row) => {
+    const code = normalizeImageCode(String(row.file_name));
+    return rowToImage(row, studyMap.get(code) ?? []);
+  });
 }
 
 export async function hydrateImageUrls(images: CatalogImage[], expiresIn = 86400): Promise<CatalogImage[]> {
