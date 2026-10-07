@@ -15,6 +15,7 @@ export type ReviewStatus =
 export type CatalogImage = {
   id: string;
   name: string;
+  imageCode: string;
   country: string;
   countryCode: string;
   folder: string;
@@ -26,6 +27,8 @@ export type CatalogImage = {
   storagePath?: string;
   isNew?: boolean;
   studies: string[];
+  brands: string[];
+  masterNames: string[];
 };
 
 export const NO_STUDY = 'Sin estudio identificado';
@@ -47,13 +50,21 @@ const COUNTRY_BY_CODE: Record<string, string> = {
 
 function normalizeImageCode(value: string) {
   const filename = value.replace(/\\/g, '/').split('/').at(-1) ?? value;
-  return filename.trim().replace(/\.(jpe?g|png|webp|gif|bmp|avif)$/i, '').toUpperCase();
+  return filename
+    .trim()
+    .replace(/\.(jpe?g|png|webp|gif|bmp|avif)$/i, '')
+    .replace(/_\d+$/i, '')
+    .toUpperCase();
 }
 
-function rowToImage(row: Record<string, unknown>, studies: string[] = [], imageUrl?: string): CatalogImage {
+type ImageMetadata = { studies: string[]; brands: string[]; names: string[] };
+
+function rowToImage(row: Record<string, unknown>, metadata: ImageMetadata = { studies: [], brands: [], names: [] }, imageUrl?: string): CatalogImage {
+  const name = String(row.file_name);
   return {
     id: String(row.id),
-    name: String(row.file_name),
+    name,
+    imageCode: normalizeImageCode(name),
     country: String(row.country),
     countryCode: String(row.country_code),
     folder: String(row.file_path).split('/').slice(0, -1).join(' / ') || String(row.country),
@@ -64,7 +75,9 @@ function rowToImage(row: Record<string, unknown>, studies: string[] = [], imageU
     storagePath: String(row.storage_path),
     imageUrl,
     isNew: row.review_status === 'Sin revisar',
-    studies,
+    studies: metadata.studies,
+    brands: metadata.brands,
+    masterNames: metadata.names,
   };
 }
 
@@ -86,24 +99,28 @@ async function loadAllCatalogRows(): Promise<Record<string, unknown>[]> {
   return rows;
 }
 
-async function loadStudyMap(): Promise<Map<string, string[]>> {
-  const studyMap = new Map<string, Set<string>>();
+async function loadStudyMap(): Promise<Map<string, ImageMetadata>> {
+  const studyMap = new Map<string, { studies: Set<string>; brands: Set<string>; names: Set<string> }>();
   if (!supabase) return new Map();
   const pageSize = 1000;
-  const addRows = (rows: { codigo_imagen: unknown; estudio: unknown }[]) => {
+  const addRows = (rows: { codigo_imagen: unknown; estudio: unknown; marca: unknown; nombre: unknown }[]) => {
     for (const row of rows) {
       const code = normalizeImageCode(String(row.codigo_imagen ?? ''));
       const study = String(row.estudio ?? '').trim();
+      const brand = String(row.marca ?? '').trim();
+      const name = String(row.nombre ?? '').trim();
       if (!code || !study) continue;
-      const studies = studyMap.get(code) ?? new Set<string>();
-      studies.add(study);
-      studyMap.set(code, studies);
+      const metadata = studyMap.get(code) ?? { studies: new Set<string>(), brands: new Set<string>(), names: new Set<string>() };
+      metadata.studies.add(study);
+      if (brand) metadata.brands.add(brand);
+      if (name) metadata.names.add(name);
+      studyMap.set(code, metadata);
     }
   };
 
   const firstResult = await supabase
     .from('imagen_estudios')
-    .select('codigo_imagen,estudio', { count: 'exact' })
+    .select('codigo_imagen,estudio,marca,nombre', { count: 'exact' })
     .order('codigo_imagen')
     .order('estudio')
     .range(0, pageSize - 1);
@@ -119,7 +136,7 @@ async function loadStudyMap(): Promise<Map<string, string[]>> {
     );
     const results = await Promise.all(offsets.map((from) => supabase
       .from('imagen_estudios')
-      .select('codigo_imagen,estudio')
+      .select('codigo_imagen,estudio,marca,nombre')
       .order('codigo_imagen')
       .order('estudio')
       .range(from, from + pageSize - 1)));
@@ -129,7 +146,11 @@ async function loadStudyMap(): Promise<Map<string, string[]>> {
     }
   }
 
-  return new Map(Array.from(studyMap, ([code, studies]) => [code, Array.from(studies).sort()]));
+  return new Map(Array.from(studyMap, ([code, metadata]) => [code, {
+    studies: Array.from(metadata.studies).sort(),
+    brands: Array.from(metadata.brands).sort(),
+    names: Array.from(metadata.names).sort(),
+  }]));
 }
 
 export async function signIn(username: string, password: string) {
@@ -159,7 +180,7 @@ export async function loadCatalog(): Promise<CatalogImage[]> {
   const [rows, studyMap] = await Promise.all([loadAllCatalogRows(), loadStudyMap()]);
   return rows.map((row) => {
     const code = normalizeImageCode(String(row.file_name));
-    return rowToImage(row, studyMap.get(code) ?? []);
+    return rowToImage(row, studyMap.get(code));
   });
 }
 
