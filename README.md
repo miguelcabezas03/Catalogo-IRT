@@ -1,6 +1,6 @@
 # Revisión IRT
 
-Aplicación para sincronizar una carpeta de imágenes del computador, buscar por nombre, filtrar por país, estudio y observación, revisar hallazgos y descargar el resultado en Excel.
+Aplicación para sincronizar una carpeta de imágenes del computador, buscar por nombre, filtrar por país, estudio, marca y observación, revisar hallazgos y descargar el resultado en Excel.
 
 ## Permisos
 
@@ -9,13 +9,16 @@ Aplicación para sincronizar una carpeta de imágenes del computador, buscar por
 
 Las contraseñas no se guardan en GitHub. La autenticación, las imágenes y las observaciones se almacenan en Supabase.
 
-El estudio de cada imagen se obtiene de los maestros de Databricks. El cuaderno consolida las fuentes, normaliza el código de imagen y sincroniza el resultado con `public.imagen_estudios`. La página permite filtrar coincidencias múltiples y también muestra **Sin estudio identificado** cuando el código aún no aparece en los maestros. El Excel exportado incluye la columna **Estudio**.
+El estudio y la marca de cada imagen se obtienen de los maestros de Databricks. El cuaderno consolida las fuentes, normaliza el código de imagen y sincroniza el resultado con `public.imagen_estudios`. La página permite filtrar coincidencias múltiples y también muestra **Sin estudio identificado** cuando el código aún no aparece en los maestros. El Excel exportado incluye las columnas **Estudio** y **Marca**.
+
+Los sufijos de versión como `_1`, `_2` o `_3` se ignoran únicamente al comparar el archivo con `Codigo_IRT`. Por ejemplo, `ES29000017_1.jpg` se relaciona con `ES29000017`, pero el nombre real del archivo no se modifica.
 
 ## Configuración inicial
 
 1. Crear un proyecto gratuito en Supabase.
 2. Abrir **SQL Editor**, copiar y ejecutar [`supabase/setup.sql`](supabase/setup.sql).
    Para habilitar la integración de estudios, ejecutar también [`supabase/setup_image_studies.sql`](supabase/setup_image_studies.sql).
+   En Databricks, usar [`databricks/celda_1_maestros.py`](databricks/celda_1_maestros.py) para el diagnóstico y la tabla descargable, y [`databricks/celda_6_sincronizacion.py`](databricks/celda_6_sincronizacion.py) para sincronizar estudio y marca.
 3. En **Authentication → Users**, crear `admin@irt.local` y `visualizador@irt.local`, cada uno con su propia contraseña y confirmación automática. En la página se inicia sesión usando solamente `admin` o `visualizador`.
 4. Ejecutar esta instrucción en **SQL Editor** para asignar el rol administrador:
 
