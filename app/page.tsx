@@ -304,7 +304,7 @@ export default function Home() {
                   <Textarea value={draftNotes} onChange={(event) => setDraftNotes(event.target.value)} placeholder="Describe lo que encontraste en la imagen…" className="min-h-32 resize-none rounded-xl" />
                 </label>
               </div>
-              <DialogFooter className="mt-7 grid grid-cols-1 gap-2 bg-[#f5f8fb] sm:flex"><Button variant="outline" onClick={() => setSelected(null)}>Cancelar</Button><Button variant="outline" onClick={() => setDeleteTarget(selected)} className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="size-4" /> Eliminar foto</Button><Button onClick={() => void saveReview()} className="bg-[#1f5fbf] text-white hover:bg-[#174f9f]">Guardar observación</Button></DialogFooter>
+              <DialogFooter className="mt-7 grid grid-cols-1 gap-2 bg-[#f5f8fb] sm:grid sm:grid-cols-1 sm:justify-stretch"><Button variant="outline" onClick={() => setSelected(null)} className="w-full">Cancelar</Button><Button variant="outline" onClick={() => setDeleteTarget(selected)} className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="size-4" /> Eliminar foto</Button><Button onClick={() => void saveReview()} className="w-full bg-[#1f5fbf] text-white hover:bg-[#174f9f]">Guardar observación</Button></DialogFooter>
             </div>
           </div>}
         </DialogContent>
