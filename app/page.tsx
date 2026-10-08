@@ -230,11 +230,15 @@ export default function Home() {
             </div>
             <div className="flex min-w-0 flex-col p-4 sm:p-6">
               <DialogHeader>
-                <div className="mb-1 flex flex-wrap items-center gap-2"><Badge className="bg-[#e8f3f6] text-[#16526b]">{selected.country}</Badge>{(selected.studies.length ? selected.studies : [NO_STUDY]).map((value) => <Badge key={`study-${value}`} className="bg-[#e7f5f5] text-[#176b68]">{value}</Badge>)}{selected.brands.map((value) => <Badge key={`brand-${value}`} className="bg-[#f7e8f0] text-[#8b2454]">{value}</Badge>)}{selected.isNew && <Badge className="bg-amber-100 text-amber-800">Nueva</Badge>}</div>
+                <div className="mb-1 flex flex-wrap items-center gap-2"><Badge className="bg-[#e8f3f6] text-[#16526b]">{selected.country}</Badge>{(selected.studies.length ? selected.studies : [NO_STUDY]).map((value) => <Badge key={`study-${value}`} className="bg-[#e7f5f5] text-[#176b68]">{value}</Badge>)}{selected.isNew && <Badge className="bg-amber-100 text-amber-800">Nueva</Badge>}</div>
                 <DialogTitle className="break-all text-lg text-[#102f4f] sm:text-xl">{selected.name}</DialogTitle>
-                <DialogDescription className="space-y-1 break-words"><span className="block">Código: {selected.imageCode}</span>{selected.masterNames.length > 0 && <span className="block">Nombre: {selected.masterNames.join(' · ')}</span>}<span className="block break-all">{selected.folder}</span></DialogDescription>
+                <DialogDescription className="space-y-1 break-words"><span className="block">Código: {selected.imageCode}</span><span className="block break-all">Carpeta: {selected.folder}</span></DialogDescription>
               </DialogHeader>
-              <div className="mt-7 flex-1 space-y-6">
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-3"><p className="text-[.68rem] font-bold uppercase tracking-wider text-[#61788b]">Nombre del producto</p><p className="mt-1 break-words text-sm font-semibold text-[#102f4f]">{selected.masterNames.join(' · ') || 'Sin nombre identificado'}</p></div>
+                <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-3"><p className="text-[.68rem] font-bold uppercase tracking-wider text-[#61788b]">Marca</p><p className="mt-1 break-words text-sm font-semibold text-[#102f4f]">{selected.brands.join(' · ') || 'Sin marca identificada'}</p></div>
+              </div>
+              <div className="mt-6 flex-1 space-y-6">
                 <label className="block">
                   <span className="mb-2 block text-sm font-semibold text-[#29475f]">Resultado de la revisión</span>
                   <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as ReviewStatus)}><SelectTrigger className="h-11 w-full rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{REVIEW_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select>
