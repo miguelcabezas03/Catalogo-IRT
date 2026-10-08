@@ -13,6 +13,10 @@ El estudio y la marca de cada imagen se obtienen de los maestros de Databricks. 
 
 Los sufijos de versión y guiones bajos finales se ignoran únicamente al comparar el archivo con `Codigo_IRT`. Por ejemplo, `ES29000017_1.jpg` y `HN29000171_1_.jpg` se relacionan con `ES29000017` y `HN29000171`, pero el nombre real del archivo no se modifica.
 
+Los nombres de carpetas de países se normalizan sin distinguir mayúsculas, minúsculas, tildes ni espacios sobrantes. Por ejemplo, `Chile` y `ChilE  ` se guardan como la misma carpeta canónica `Chile`: un archivo con el mismo nombre se reemplaza y uno nuevo se agrega.
+
+Los perfiles **Administrador** y **Visualizador** pueden eliminar una foto desde su ficha, siempre después de una confirmación. El administrador conserva en exclusiva la carga y sincronización de carpetas. Para habilitar la eliminación compartida en una instalación existente, ejecutar `supabase/allow_authenticated_delete.sql` una vez en Supabase.
+
 La consolidación de Databricks usa automáticamente las tres `OlaID` más recientes de cada maestro. De esta forma la ventana mensual avanza sin editar el cuaderno: agosto–septiembre–octubre pasa a septiembre–octubre–noviembre cuando aparece la nueva ola.
 
 ## Configuración inicial
