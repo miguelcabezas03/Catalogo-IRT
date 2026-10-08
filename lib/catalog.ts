@@ -48,12 +48,17 @@ const COUNTRY_BY_CODE: Record<string, string> = {
   PE: 'Perú', PR: 'Puerto Rico', PY: 'Paraguay', SV: 'El Salvador', UY: 'Uruguay', VE: 'Venezuela',
 };
 
+const FOLDER_ALIASES: Record<string, { code: string; country: string }> = {
+  CV: { code: 'CL', country: 'Chile' },
+  CRUZVERDE: { code: 'CL', country: 'Chile' },
+};
+
 function normalizeImageCode(value: string) {
   const filename = value.replace(/\\/g, '/').split('/').at(-1) ?? value;
   return filename
     .trim()
     .replace(/\.(jpe?g|png|webp|gif|bmp|avif)$/i, '')
-    .replace(/_\d+$/i, '')
+    .replace(/(?:_\d+)+_*$/i, '')
     .toUpperCase();
 }
 
@@ -61,13 +66,20 @@ type ImageMetadata = { studies: string[]; brands: string[]; names: string[] };
 
 function rowToImage(row: Record<string, unknown>, metadata: ImageMetadata = { studies: [], brands: [], names: [] }, imageUrl?: string): CatalogImage {
   const name = String(row.file_name);
+  const filePath = String(row.file_path);
+  const pathParts = filePath.replace(/\\/g, '/').split('/').filter(Boolean);
+  const folderName = pathParts.length > 1 ? pathParts[0].trim() : '';
+  const filenamePrefix = name.match(/^([A-Za-z]{2})/)?.[1]?.toUpperCase();
+  const folderAlias = FOLDER_ALIASES[countryToken(folderName)];
+  const prefixAlias = filenamePrefix ? FOLDER_ALIASES[filenamePrefix] : undefined;
+  const displayedCountry = folderAlias?.country || folderName || prefixAlias?.country || String(row.country);
   return {
     id: String(row.id),
     name,
     imageCode: normalizeImageCode(name),
-    country: String(row.country),
-    countryCode: String(row.country_code),
-    folder: String(row.file_path).split('/').slice(0, -1).join(' / ') || String(row.country),
+    country: displayedCountry,
+    countryCode: folderAlias?.code || prefixAlias?.code || String(row.country_code),
+    folder: pathParts.slice(0, -1).join(' / ') || displayedCountry,
     status: row.review_status as ReviewStatus,
     notes: String(row.notes ?? ''),
     updatedAt: new Date(String(row.updated_at)).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }),
@@ -214,6 +226,7 @@ function countryToken(value: string) {
 
 function countryFromFolder(folder: string) {
   const token = countryToken(folder);
+  if (FOLDER_ALIASES[token]) return FOLDER_ALIASES[token];
   if (COUNTRY_BY_CODE[token]) return { code: token, country: COUNTRY_BY_CODE[token] };
   const match = Object.entries(COUNTRY_BY_CODE).find(([, name]) => countryToken(name) === token);
   if (match) return { code: match[0], country: match[1] };
@@ -224,11 +237,14 @@ function countryFromFolder(folder: string) {
 function inferCountry(path: string) {
   const parts = path.split('/').filter(Boolean);
   const filename = parts.at(-1) ?? path;
+  const folder = parts.length > 1 ? parts[0].trim() : '';
+  const folderLocation = folder ? countryFromFolder(folder) : null;
   const prefixCandidate = filename.match(/^([A-Za-z]{2})/)?.[1]?.toUpperCase();
-  const prefix = prefixCandidate && COUNTRY_BY_CODE[prefixCandidate] ? prefixCandidate : undefined;
-  if (prefix && COUNTRY_BY_CODE[prefix]) return { code: prefix, country: COUNTRY_BY_CODE[prefix] };
-  const folderCountry = parts.slice(0, -1).map(countryFromFolder).find(Boolean);
-  return folderCountry ?? { code: 'OT', country: parts.at(-2) ?? 'Otro' };
+  const prefixLocation = prefixCandidate
+    ? FOLDER_ALIASES[prefixCandidate] ?? (COUNTRY_BY_CODE[prefixCandidate] ? { code: prefixCandidate, country: COUNTRY_BY_CODE[prefixCandidate] } : null)
+    : null;
+  if (folder) return { code: folderLocation?.code ?? prefixLocation?.code ?? 'OT', country: folderLocation?.country ?? folder };
+  return prefixLocation ?? { code: 'OT', country: 'Otro' };
 }
 
 function normalizePath(path: string) {
@@ -243,13 +259,10 @@ function toStorageKey(path: string) {
     .replace(/_+/g, '_');
 }
 
-function relativeCatalogPath(originalPath: string, fallbackName: string) {
+function relativeCatalogPath(originalPath: string, fallbackName: string, preserveSelectedFolder: boolean) {
   const parts = normalizePath(originalPath).split('/').filter(Boolean);
   if (parts.length <= 1) return parts[0] || fallbackName;
-  // El navegador siempre incluye la carpeta seleccionada como primer segmento.
-  // Si esa carpeta ya es un país (CR, PANAMÁ, Costa Rica…), se conserva;
-  // si es la carpeta general del catálogo, se elimina solamente ese nivel.
-  return (countryFromFolder(parts[0]) ? parts : parts.slice(1)).join('/') || fallbackName;
+  return (preserveSelectedFolder ? parts : parts.slice(1)).join('/') || fallbackName;
 }
 
 export async function uploadCatalogFiles(files: File[], onProgress: (done: number, total: number) => void) {
@@ -258,6 +271,13 @@ export async function uploadCatalogFiles(files: File[], onProgress: (done: numbe
   const configuredClient = client;
   const entries = files.filter((file) => /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name));
   if (!entries.length) throw new Error('La carpeta no contiene imágenes compatibles.');
+
+  const firstPathParts = normalizePath(entries[0].webkitRelativePath || entries[0].name).split('/').filter(Boolean);
+  const selectedFolder = firstPathParts.length > 1 ? firstPathParts[0] : '';
+  const containsSubfolders = entries.some((entry) => normalizePath(entry.webkitRelativePath || entry.name).split('/').filter(Boolean).length > 2);
+  // Una carpeta reconocida (incluida Cruz Verde/Chile) puede subirse sola y debe conservar
+  // su nombre. Si se selecciona el catálogo general, se quita únicamente ese nivel.
+  const preserveSelectedFolder = Boolean(countryFromFolder(selectedFolder)) || !containsSubfolders;
 
   const existing = await loadAllCatalogRows();
   const existingByPath = new Map(existing.map((row) => [String(row.file_path), row]));
@@ -277,7 +297,7 @@ export async function uploadCatalogFiles(files: File[], onProgress: (done: numbe
         cursor += 1;
         const entry = batch[index];
         const originalPath = entry.webkitRelativePath || entry.name;
-        const relativePath = relativeCatalogPath(originalPath, entry.name);
+        const relativePath = relativeCatalogPath(originalPath, entry.name, preserveSelectedFolder);
         const storagePath = `catalog/${toStorageKey(relativePath)}`;
         const previous = existingByPath.get(relativePath);
         const country = inferCountry(relativePath);
