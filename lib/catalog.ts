@@ -70,15 +70,15 @@ function rowToImage(row: Record<string, unknown>, metadata: ImageMetadata = { st
   const pathParts = filePath.replace(/\\/g, '/').split('/').filter(Boolean);
   const folderName = pathParts.length > 1 ? pathParts[0].trim() : '';
   const filenamePrefix = name.match(/^([A-Za-z]{2})/)?.[1]?.toUpperCase();
-  const folderAlias = FOLDER_ALIASES[countryToken(folderName)];
+  const folderLocation = folderName ? countryFromFolder(folderName) : null;
   const prefixAlias = filenamePrefix ? FOLDER_ALIASES[filenamePrefix] : undefined;
-  const displayedCountry = folderAlias?.country || folderName || prefixAlias?.country || String(row.country);
+  const displayedCountry = folderLocation?.country || folderName || prefixAlias?.country || String(row.country);
   return {
     id: String(row.id),
     name,
     imageCode: normalizeImageCode(name),
     country: displayedCountry,
-    countryCode: folderAlias?.code || prefixAlias?.code || String(row.country_code),
+    countryCode: folderLocation?.code || prefixAlias?.code || String(row.country_code),
     folder: pathParts.slice(0, -1).join(' / ') || displayedCountry,
     status: row.review_status as ReviewStatus,
     notes: String(row.notes ?? ''),
@@ -220,6 +220,22 @@ export async function saveReview(image: CatalogImage) {
   if (error) throw error;
 }
 
+export async function deleteCatalogImage(image: CatalogImage) {
+  if (!supabase) return;
+  if (!image.storagePath) throw new Error('La imagen no tiene una ruta de almacenamiento válida.');
+
+  const { error: storageError } = await supabase.storage
+    .from('catalog-images')
+    .remove([image.storagePath]);
+  if (storageError) throw storageError;
+
+  const { error: rowError } = await supabase
+    .from('catalog_images')
+    .delete()
+    .eq('id', image.id);
+  if (rowError) throw rowError;
+}
+
 function countryToken(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
@@ -248,7 +264,15 @@ function inferCountry(path: string) {
 }
 
 function normalizePath(path: string) {
-  return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\.\./g, '').replace(/[^\p{L}\p{N}._\-/ ]/gu, '_');
+  return path
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .replace(/\.\./g, '')
+    .replace(/[^\p{L}\p{N}._\-/ ]/gu, '_')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('/');
 }
 
 function toStorageKey(path: string) {
@@ -262,7 +286,10 @@ function toStorageKey(path: string) {
 function relativeCatalogPath(originalPath: string, fallbackName: string, preserveSelectedFolder: boolean) {
   const parts = normalizePath(originalPath).split('/').filter(Boolean);
   if (parts.length <= 1) return parts[0] || fallbackName;
-  return (preserveSelectedFolder ? parts : parts.slice(1)).join('/') || fallbackName;
+  const relativeParts = preserveSelectedFolder ? parts : parts.slice(1);
+  const folderLocation = relativeParts[0] ? countryFromFolder(relativeParts[0]) : null;
+  if (folderLocation) relativeParts[0] = folderLocation.country;
+  return relativeParts.join('/') || fallbackName;
 }
 
 export async function uploadCatalogFiles(files: File[], onProgress: (done: number, total: number) => void) {
