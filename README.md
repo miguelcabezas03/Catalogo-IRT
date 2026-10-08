@@ -11,7 +11,9 @@ Las contraseñas no se guardan en GitHub. La autenticación, las imágenes y las
 
 El estudio y la marca de cada imagen se obtienen de los maestros de Databricks. El cuaderno consolida las fuentes, normaliza el código de imagen y sincroniza el resultado con `public.imagen_estudios`. La página permite filtrar coincidencias múltiples y también muestra **Sin estudio identificado** cuando el código aún no aparece en los maestros. El Excel exportado incluye las columnas **Estudio** y **Marca**.
 
-Los sufijos de versión como `_1`, `_2` o `_3` se ignoran únicamente al comparar el archivo con `Codigo_IRT`. Por ejemplo, `ES29000017_1.jpg` se relaciona con `ES29000017`, pero el nombre real del archivo no se modifica.
+Los sufijos de versión y guiones bajos finales se ignoran únicamente al comparar el archivo con `Codigo_IRT`. Por ejemplo, `ES29000017_1.jpg` y `HN29000171_1_.jpg` se relacionan con `ES29000017` y `HN29000171`, pero el nombre real del archivo no se modifica.
+
+La consolidación de Databricks usa automáticamente las tres `OlaID` más recientes de cada maestro. De esta forma la ventana mensual avanza sin editar el cuaderno: agosto–septiembre–octubre pasa a septiembre–octubre–noviembre cuando aparece la nueva ola.
 
 ## Configuración inicial
 
