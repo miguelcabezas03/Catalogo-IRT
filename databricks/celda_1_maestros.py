@@ -3,6 +3,8 @@
 # CELDA 1 — Diagnóstico y consolidación de maestros IRT.
 # El primer resultado explica qué columna usa cada fuente. El segundo resultado
 # contiene la tabla completa y se puede descargar desde Download CSV.
+# Se incluyen automáticamente las tres OlaID más recientes de cada fuente, que
+# corresponden a la ventana móvil de los últimos tres meses del proceso.
 
 import re
 import unicodedata
@@ -180,11 +182,20 @@ for source in SOURCES:
         if not code_column:
             raise ValueError(f"No existe la columna de código {source['codigo']}")
 
-        latest_wave = None
+        recent_waves = []
         current = raw
         if ola_column:
-            latest_wave = raw.agg(F.max(F.col(ola_column)).alias("ola")).first()["ola"]
-            current = raw.where(F.col(ola_column) == latest_wave)
+            recent_waves = [
+                row["ola"]
+                for row in raw.select(F.col(ola_column).alias("ola"))
+                .where(F.col(ola_column).isNotNull())
+                .distinct()
+                .orderBy(F.col("ola").desc())
+                .limit(3)
+                .collect()
+            ]
+            if recent_waves:
+                current = raw.where(F.col(ola_column).isin(recent_waves))
 
         selected = current.select(
             source_column(country_column).alias("Pais"),
@@ -203,7 +214,7 @@ for source in SOURCES:
             source["tabla"],
             code_column,
             brand_column or "NO ENCONTRADA",
-            str(latest_wave) if latest_wave is not None else "Sin OlaID",
+            ", ".join(str(wave) for wave in recent_waves) if recent_waves else "Sin OlaID",
             row_count,
             "OK" if brand_column else "OK, pero sin columna de marca",
         ))
@@ -232,7 +243,7 @@ maestros_irt_estudios = reduce(lambda left, right: left.unionByName(right), fram
                     "",
                 )
             ),
-            r"_[0-9]+$",
+            r"(?:_[0-9]+)+_*$",
             "",
         )
     ),
@@ -261,6 +272,11 @@ diagnostic_schema = StructType([
 diagnostico = spark.createDataFrame(diagnostic_rows, diagnostic_schema)
 
 print("DIAGNÓSTICO DE FUENTES — revisa especialmente Columna_Marca y Estado")
+for row in diagnostico.orderBy("Estudio").collect():
+    print(
+        f"{row['Estudio']} | olas: {row['Ultima_OlaID']} | "
+        f"filas: {row['Filas']} | {row['Estado']}"
+    )
 display(diagnostico.orderBy("Estudio"))
 
 print("TABLA CONSOLIDADA — usa Download CSV en este resultado para descargarla")
