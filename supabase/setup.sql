@@ -26,13 +26,13 @@ create policy "Usuarios ven su perfil" on public.profiles for select to authenti
 create policy "Usuarios leen catalogo" on public.catalog_images for select to authenticated using (true);
 create policy "Admin inserta catalogo" on public.catalog_images for insert to authenticated with check ((select role from public.profiles where id = auth.uid()) = 'admin');
 create policy "Admin actualiza catalogo" on public.catalog_images for update to authenticated using ((select role from public.profiles where id = auth.uid()) = 'admin') with check ((select role from public.profiles where id = auth.uid()) = 'admin');
-create policy "Admin elimina catalogo" on public.catalog_images for delete to authenticated using ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Usuarios eliminan catalogo" on public.catalog_images for delete to authenticated using (exists (select 1 from public.profiles where id = auth.uid()));
 
 insert into storage.buckets (id, name, public) values ('catalog-images', 'catalog-images', false) on conflict (id) do update set public = false;
 create policy "Usuarios ven imagenes" on storage.objects for select to authenticated using (bucket_id = 'catalog-images');
 create policy "Admin sube imagenes" on storage.objects for insert to authenticated with check (bucket_id = 'catalog-images' and (select role from public.profiles where id = auth.uid()) = 'admin');
 create policy "Admin reemplaza imagenes" on storage.objects for update to authenticated using (bucket_id = 'catalog-images' and (select role from public.profiles where id = auth.uid()) = 'admin');
-create policy "Admin elimina imagenes" on storage.objects for delete to authenticated using (bucket_id = 'catalog-images' and (select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Usuarios eliminan imagenes" on storage.objects for delete to authenticated using (bucket_id = 'catalog-images' and exists (select 1 from public.profiles where id = auth.uid()));
 
 create or replace function public.save_catalog_review(p_id uuid, p_status text, p_notes text)
 returns void language plpgsql security definer set search_path = public as $$
