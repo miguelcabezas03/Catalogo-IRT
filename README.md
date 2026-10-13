@@ -6,6 +6,7 @@ Aplicación para sincronizar una carpeta de imágenes del computador, buscar por
 
 - **Administrador:** selecciona o actualiza la carpeta del catálogo, cambia estados, escribe observaciones y marca imágenes correctas.
 - **Visualizador:** busca, filtra, abre imágenes, guarda observaciones y descarga Excel. No puede sincronizar carpetas.
+- **Validación:** únicamente busca, filtra y abre imágenes. No puede cargar ni eliminar imágenes, cambiar estados, escribir observaciones, marcar imágenes correctas ni descargar Excel.
 
 Las contraseñas no se guardan en GitHub. La autenticación, las imágenes y las observaciones se almacenan en Supabase.
 
@@ -15,7 +16,7 @@ Los sufijos de versión y guiones bajos finales se ignoran únicamente al compar
 
 Los nombres de carpetas de países se normalizan sin distinguir mayúsculas, minúsculas, tildes ni espacios sobrantes. Por ejemplo, `Chile` y `ChilE  ` se guardan como la misma carpeta canónica `Chile`: un archivo con el mismo nombre se reemplaza y uno nuevo se agrega.
 
-Los perfiles **Administrador** y **Visualizador** pueden eliminar una foto desde su ficha, siempre después de una confirmación. El administrador conserva en exclusiva la carga y sincronización de carpetas. Para habilitar la eliminación compartida en una instalación existente, ejecutar `supabase/allow_authenticated_delete.sql` una vez en Supabase.
+Los perfiles **Administrador** y **Visualizador** pueden eliminar una foto desde su ficha, siempre después de una confirmación. El administrador conserva en exclusiva la carga y sincronización de carpetas. **Validación** tiene acceso de solo lectura protegido también por las políticas de Supabase. Para habilitar este tercer perfil en una instalación existente, ejecutar `supabase/add_validation_role.sql` una vez en Supabase.
 
 La consolidación de Databricks usa automáticamente las tres `OlaID` más recientes de cada maestro. De esta forma la ventana mensual avanza sin editar el cuaderno: agosto–septiembre–octubre pasa a septiembre–octubre–noviembre cuando aparece la nueva ola.
 
@@ -25,7 +26,7 @@ La consolidación de Databricks usa automáticamente las tres `OlaID` más recie
 2. Abrir **SQL Editor**, copiar y ejecutar [`supabase/setup.sql`](supabase/setup.sql).
    Para habilitar la integración de estudios, ejecutar también [`supabase/setup_image_studies.sql`](supabase/setup_image_studies.sql).
    En Databricks, usar [`databricks/celda_1_maestros.py`](databricks/celda_1_maestros.py) para el diagnóstico y la tabla descargable, y [`databricks/celda_6_sincronizacion.py`](databricks/celda_6_sincronizacion.py) para sincronizar estudio y marca.
-3. En **Authentication → Users**, crear `admin@irt.local` y `visualizador@irt.local`, cada uno con su propia contraseña y confirmación automática. En la página se inicia sesión usando solamente `admin` o `visualizador`.
+3. En **Authentication → Users**, crear `admin@irt.local`, `visualizador@irt.local` y `validacion@irt.local`, cada uno con su propia contraseña y confirmación automática. En la página se inicia sesión usando solamente `admin`, `visualizador` o `validacion`.
 4. Ejecutar esta instrucción en **SQL Editor** para asignar el rol administrador:
 
    ```sql
@@ -34,7 +35,7 @@ La consolidación de Databricks usa automáticamente las tres `OlaID` más recie
    where id = (select id from auth.users where email = 'admin@irt.local');
    ```
 
-   La cuenta `visualizador@irt.local` queda automáticamente con el rol `viewer`. Si la versión anterior de la base de datos ya estaba configurada, ejecutar también [`supabase/upgrade_shared_reviews.sql`](supabase/upgrade_shared_reviews.sql).
+   La cuenta `visualizador@irt.local` queda automáticamente con el rol `viewer` y `validacion@irt.local` con el rol `validation`. Si la versión anterior de la base de datos ya estaba configurada, ejecutar [`supabase/add_validation_role.sql`](supabase/add_validation_role.sql) después de crear la cuenta de Validación.
 5. En GitHub abrir **Settings → Secrets and variables → Actions → Variables** y crear:
    - `SUPABASE_URL`: Project Settings → API → Project URL.
    - `SUPABASE_ANON_KEY`: Project Settings → API → anon/public key. Esta clave es pública; nunca usar la `service_role` en GitHub.
