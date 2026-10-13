@@ -3,7 +3,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  role text not null default 'viewer' check (role in ('admin', 'viewer')),
+  role text not null default 'viewer' check (role in ('admin', 'viewer', 'validation')),
   created_at timestamptz not null default now()
 );
 
@@ -15,7 +15,12 @@ create table if not exists public.catalog_images (
 );
 
 create or replace function public.create_profile_for_new_user() returns trigger language plpgsql security definer set search_path = '' as $$
-begin insert into public.profiles (id, role) values (new.id, 'viewer') on conflict (id) do nothing; return new; end;
+begin
+  insert into public.profiles (id, role)
+  values (new.id, case when lower(new.email) = 'validacion@irt.local' then 'validation' else 'viewer' end)
+  on conflict (id) do nothing;
+  return new;
+end;
 $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute function public.create_profile_for_new_user();
@@ -26,18 +31,18 @@ create policy "Usuarios ven su perfil" on public.profiles for select to authenti
 create policy "Usuarios leen catalogo" on public.catalog_images for select to authenticated using (true);
 create policy "Admin inserta catalogo" on public.catalog_images for insert to authenticated with check ((select role from public.profiles where id = auth.uid()) = 'admin');
 create policy "Admin actualiza catalogo" on public.catalog_images for update to authenticated using ((select role from public.profiles where id = auth.uid()) = 'admin') with check ((select role from public.profiles where id = auth.uid()) = 'admin');
-create policy "Usuarios eliminan catalogo" on public.catalog_images for delete to authenticated using (exists (select 1 from public.profiles where id = auth.uid()));
+create policy "Usuarios eliminan catalogo" on public.catalog_images for delete to authenticated using ((select role from public.profiles where id = auth.uid()) in ('admin', 'viewer'));
 
 insert into storage.buckets (id, name, public) values ('catalog-images', 'catalog-images', false) on conflict (id) do update set public = false;
 create policy "Usuarios ven imagenes" on storage.objects for select to authenticated using (bucket_id = 'catalog-images');
 create policy "Admin sube imagenes" on storage.objects for insert to authenticated with check (bucket_id = 'catalog-images' and (select role from public.profiles where id = auth.uid()) = 'admin');
 create policy "Admin reemplaza imagenes" on storage.objects for update to authenticated using (bucket_id = 'catalog-images' and (select role from public.profiles where id = auth.uid()) = 'admin');
-create policy "Usuarios eliminan imagenes" on storage.objects for delete to authenticated using (bucket_id = 'catalog-images' and exists (select 1 from public.profiles where id = auth.uid()));
+create policy "Usuarios eliminan imagenes" on storage.objects for delete to authenticated using (bucket_id = 'catalog-images' and (select role from public.profiles where id = auth.uid()) in ('admin', 'viewer'));
 
 create or replace function public.save_catalog_review(p_id uuid, p_status text, p_notes text)
 returns void language plpgsql security definer set search_path = public as $$
 begin
-  if not exists (select 1 from public.profiles where id = auth.uid()) then
+  if coalesce((select role from public.profiles where id = auth.uid()), '') not in ('admin', 'viewer') then
     raise exception 'Usuario no autorizado';
   end if;
   update public.catalog_images
@@ -57,4 +62,5 @@ end $$;
 
 -- Después de crear las cuentas en Authentication > Users, asignar el administrador:
 -- update public.profiles set role = 'admin' where id = (select id from auth.users where email = 'admin@irt.local');
--- La segunda cuenta queda automáticamente con role = 'viewer'.
+-- La cuenta visualizador queda automáticamente con role = 'viewer'.
+-- La cuenta validacion@irt.local queda automáticamente con role = 'validation' (solo lectura).

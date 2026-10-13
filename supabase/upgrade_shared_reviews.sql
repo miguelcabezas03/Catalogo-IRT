@@ -2,7 +2,7 @@
 create or replace function public.save_catalog_review(p_id uuid, p_status text, p_notes text)
 returns void language plpgsql security definer set search_path = public as $$
 begin
-  if not exists (select 1 from public.profiles where id = auth.uid()) then
+  if coalesce((select role from public.profiles where id = auth.uid()), '') not in ('admin', 'viewer') then
     raise exception 'Usuario no autorizado';
   end if;
   update public.catalog_images
