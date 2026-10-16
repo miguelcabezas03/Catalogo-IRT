@@ -18,18 +18,25 @@ SYNC_PASSWORD = dbutils.secrets.get(scope="catalogo-irt", key="sync-password")
 IMAGE_TABLE = "e_sv_kolatam_trad.slv_ru_interview_attach_e_sv_kolatam_trad"
 AUDIT_TABLE = "storeview.slv_sv_ceres_ag_export"
 BATCH_SIZE = 500
+MAX_SESSIONS = 100000
+MAX_IMAGES = 500000
 
 images_source = spark.table(IMAGE_TABLE)
 audits_source = spark.table(AUDIT_TABLE)
 
 required_image_columns = {"RU03_InterviewID", "RU03_URL"}
-required_audit_columns = {"ID_de_audito"}
+required_audit_columns = {"ID_de_audito", "Fecha_del_audito"}
 missing_images = required_image_columns.difference(images_source.columns)
 missing_audits = required_audit_columns.difference(audits_source.columns)
 if missing_images:
     raise ValueError(f"Faltan columnas en {IMAGE_TABLE}: {sorted(missing_images)}")
 if missing_audits:
     raise ValueError(f"Faltan columnas en {AUDIT_TABLE}: {sorted(missing_audits)}")
+
+# La vista del validador usa únicamente el mes calendario actual. El filtro se
+# actualiza solo al comenzar cada mes y evita publicar millones de registros.
+month_start = F.trunc(F.current_date(), "month")
+audits_source = audits_source.filter(F.to_date("Fecha_del_audito") >= month_start)
 
 audit_struct = F.struct(*[F.col(column).alias(column) for column in audits_source.columns])
 def normalized_id(column):
@@ -81,6 +88,12 @@ print(f"Auditorías preparadas: {session_count:,}")
 print(f"Imágenes preparadas: {image_count:,}")
 if session_count == 0 or image_count == 0:
     raise ValueError("La unión no devolvió registros. Revisa los tipos y valores de ID_de_audito y RU03_InterviewID.")
+if session_count > MAX_SESSIONS or image_count > MAX_IMAGES:
+    raise ValueError(
+        "La sincronización supera el límite de seguridad "
+        f"({session_count:,} auditorías / {image_count:,} imágenes). "
+        "Revisa el filtro de Fecha_del_audito antes de continuar."
+    )
 
 auth_response = requests.post(
     f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
@@ -145,14 +158,15 @@ def image_payload(row):
 upsert_iterator("audit_validation_sessions", sessions_df.toLocalIterator(), "audit_id", session_payload, session_count)
 upsert_iterator("audit_validation_images", images_df.toLocalIterator(), "image_key", image_payload, image_count)
 
-cleanup_headers = {**headers, "Prefer": "return=minimal"}
-for table in ["audit_validation_images", "audit_validation_sessions"]:
-    cleanup = requests.delete(
-        f"{SUPABASE_URL}/rest/v1/{table}?sync_id=neq.{sync_id}",
-        headers=cleanup_headers,
-        timeout=120,
-    )
-    cleanup.raise_for_status()
+# La función SQL elimina en lotes los registros de sincronizaciones anteriores.
+# Esto evita el error 500 que produce un DELETE masivo desde la API REST.
+cleanup = requests.post(
+    f"{SUPABASE_URL}/rest/v1/rpc/cleanup_audit_validation",
+    headers={**headers, "Prefer": "return=minimal"},
+    json={"p_sync_id": sync_id},
+    timeout=300,
+)
+cleanup.raise_for_status()
 
 joined.unpersist()
 print(f"Sincronización terminada. Código: {sync_id}")
