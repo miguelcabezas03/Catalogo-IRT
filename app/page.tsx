@@ -1,72 +1,158 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ChevronRight, Download, Expand, FileImage, FolderOpen, LoaderCircle, LogOut, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Upload, UserRound, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { AuditValidationPanel } from '@/components/audit-validation-panel';
-import { type CatalogImage, type ReviewStatus, type UserRole, deleteCatalogImage, getCurrentUser, hydrateImageUrls, isBackendConfigured, loadCatalog, NO_STUDY, saveReview as saveCatalogReview, signIn, signOut, supabase, uploadCatalogFiles } from '@/lib/catalog';
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Columns3,
+  Download,
+  Expand,
+  FileImage,
+  FolderOpen,
+  GripVertical,
+  LoaderCircle,
+  LogOut,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  Upload,
+  UserRound,
+  X,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { AuditValidationPanel } from "@/components/audit-validation-panel";
+import {
+  type CatalogImage,
+  type ReviewStatus,
+  type UserRole,
+  deleteCatalogImage,
+  getCurrentUser,
+  hydrateImageUrls,
+  isBackendConfigured,
+  loadCatalog,
+  NO_STUDY,
+  saveReview as saveCatalogReview,
+  signIn,
+  signOut,
+  supabase,
+  uploadCatalogFiles,
+} from "@/lib/catalog";
 
-const REVIEW_OPTIONS: ReviewStatus[] = ['Sin observaciones', 'Sin revisar', 'Borrosa', 'Mala calidad', 'Imagen incorrecta', 'Incompleta', 'Duplicada', 'Otra'];
+const REVIEW_OPTIONS: ReviewStatus[] = [
+  "Sin observaciones",
+  "Sin revisar",
+  "Borrosa",
+  "Mala calidad",
+  "Imagen incorrecta",
+  "Incompleta",
+  "Duplicada",
+  "Otra",
+];
 function statusTone(status: ReviewStatus) {
-  if (status === 'Sin observaciones') return 'good';
-  if (status === 'Sin revisar') return 'pending';
-  return 'issue';
+  if (status === "Sin observaciones") return "good";
+  if (status === "Sin revisar") return "pending";
+  return "issue";
 }
 
 export default function Home() {
   const [images, setImages] = useState<CatalogImage[]>([]);
   const [role, setRole] = useState<UserRole | null>(null);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(isBackendConfigured);
-  const [userEmail, setUserEmail] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [country, setCountry] = useState('Todos');
-  const [study, setStudy] = useState('Todos');
-  const [brand, setBrand] = useState('Todas');
-  const [status, setStatus] = useState('Todas');
+  const [userEmail, setUserEmail] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [country, setCountry] = useState("Todos");
+  const [study, setStudy] = useState("Todos");
+  const [brand, setBrand] = useState("Todas");
+  const [status, setStatus] = useState("Todas");
   const [selected, setSelected] = useState<CatalogImage | null>(null);
-  const [draftStatus, setDraftStatus] = useState<ReviewStatus>('Sin observaciones');
-  const [draftNotes, setDraftNotes] = useState('');
+  const [draftStatus, setDraftStatus] = useState<ReviewStatus>("Sin observaciones");
+  const [draftNotes, setDraftNotes] = useState("");
   const [confirmAll, setConfirmAll] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CatalogImage | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState("");
   const [errorNotice, setErrorNotice] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [visibleLimit, setVisibleLimit] = useState(60);
+  const [validationSplit, setValidationSplit] = useState(50);
+  const [isResizingValidation, setIsResizingValidation] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const openedLinkId = useRef<string | null>(null);
-  const isAdmin = role === 'admin';
-  const canReview = role === 'admin' || role === 'viewer';
-  const isReadOnly = role === 'validation';
-  const roleLabel = isAdmin ? 'Administrador' : isReadOnly ? 'Validación' : 'Visualizador';
+  const validationSplitRef = useRef<HTMLDivElement>(null);
+  const validationSplitValue = useRef(50);
+  const isAdmin = role === "admin";
+  const canReview = role === "admin" || role === "viewer";
+  const isReadOnly = role === "validation";
+  const roleLabel = isAdmin ? "Administrador" : isReadOnly ? "Validación" : "Visualizador";
 
   useEffect(() => {
-    if (!isBackendConfigured) { setAuthLoading(false); return; }
+    if (!isBackendConfigured) {
+      setAuthLoading(false);
+      return;
+    }
     let active = true;
     async function restoreSession() {
       try {
         const current = await getCurrentUser();
         if (active && current) {
-          setRole(current.role); setUserEmail(current.user.email?.split('@')[0] ?? 'Usuario');
+          setRole(current.role);
+          setUserEmail(current.user.email?.split("@")[0] ?? "Usuario");
           setImages(await loadCatalog());
         }
-      } catch (error) { if (active) showNotice(error instanceof Error ? error.message : 'No se pudo abrir la sesión.', true); }
-      finally { if (active) setAuthLoading(false); }
+      } catch (error) {
+        if (active)
+          showNotice(error instanceof Error ? error.message : "No se pudo abrir la sesión.", true);
+      } finally {
+        if (active) setAuthLoading(false);
+      }
     }
     void restoreSession();
-    const listener = supabase?.auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') { setRole(null); setImages([]); } });
-    return () => { active = false; listener?.data.subscription.unsubscribe(); };
+    const listener = supabase?.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        setRole(null);
+        setImages([]);
+      }
+    });
+    return () => {
+      active = false;
+      listener?.data.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -75,12 +161,22 @@ export default function Home() {
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshCatalog = () => {
       if (refreshTimer) clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => { void loadCatalog().then(setImages); }, 500);
+      refreshTimer = setTimeout(() => {
+        void loadCatalog().then(setImages);
+      }, 500);
     };
     const channel = client
-      .channel('catalogo-compartido')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_images' }, refreshCatalog)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'imagen_estudios' }, refreshCatalog)
+      .channel("catalogo-compartido")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "catalog_images" },
+        refreshCatalog,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "imagen_estudios" },
+        refreshCatalog,
+      )
       .subscribe();
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
@@ -88,126 +184,326 @@ export default function Home() {
     };
   }, [role]);
 
-  const countries = useMemo(() => ['Todos', ...Array.from(new Set(images.map((item) => item.country)))], [images]);
+  const countries = useMemo(
+    () => ["Todos", ...Array.from(new Set(images.map((item) => item.country)))],
+    [images],
+  );
   const studies = useMemo(() => {
     const identified = Array.from(new Set(images.flatMap((item) => item.studies))).sort();
-    return ['Todos', ...identified, ...(images.some((item) => !item.studies.length) ? [NO_STUDY] : [])];
+    return [
+      "Todos",
+      ...identified,
+      ...(images.some((item) => !item.studies.length) ? [NO_STUDY] : []),
+    ];
   }, [images]);
-  const brands = useMemo(() => ['Todas', ...Array.from(new Set(images.flatMap((item) => item.brands))).sort()], [images]);
+  const brands = useMemo(
+    () => ["Todas", ...Array.from(new Set(images.flatMap((item) => item.brands))).sort()],
+    [images],
+  );
   const filtered = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
     return images.filter((item) => {
-      const matchesSearch = !normalizedSearch
-        || item.imageCode.toLowerCase().includes(normalizedSearch)
-        || item.name.toLowerCase().includes(normalizedSearch)
-        || item.masterNames.some((value) => value.toLowerCase().includes(normalizedSearch))
-        || item.brands.some((value) => value.toLowerCase().includes(normalizedSearch))
-        || item.studies.some((value) => value.toLowerCase().includes(normalizedSearch));
-      const matchesCountry = country === 'Todos' || item.country === country;
-      const matchesStudy = study === 'Todos' || (study === NO_STUDY ? !item.studies.length : item.studies.includes(study));
-      const matchesBrand = brand === 'Todas' || item.brands.includes(brand);
-      const matchesStatus = status === 'Todas' || item.status === status;
+      const matchesSearch =
+        !normalizedSearch ||
+        item.imageCode.toLowerCase().includes(normalizedSearch) ||
+        item.name.toLowerCase().includes(normalizedSearch) ||
+        item.masterNames.some((value) => value.toLowerCase().includes(normalizedSearch)) ||
+        item.brands.some((value) => value.toLowerCase().includes(normalizedSearch)) ||
+        item.studies.some((value) => value.toLowerCase().includes(normalizedSearch));
+      const matchesCountry = country === "Todos" || item.country === country;
+      const matchesStudy =
+        study === "Todos" ||
+        (study === NO_STUDY ? !item.studies.length : item.studies.includes(study));
+      const matchesBrand = brand === "Todas" || item.brands.includes(brand);
+      const matchesStatus = status === "Todas" || item.status === status;
       return matchesSearch && matchesCountry && matchesStudy && matchesBrand && matchesStatus;
     });
   }, [brand, country, images, searchQuery, status, study]);
   const visibleImages = useMemo(() => filtered.slice(0, visibleLimit), [filtered, visibleLimit]);
-  const counts = useMemo(() => ({ total: images.length, correct: images.filter((item) => item.status === 'Sin observaciones').length, pending: images.filter((item) => item.status === 'Sin revisar').length, issues: images.filter((item) => !['Sin observaciones', 'Sin revisar'].includes(item.status)).length }), [images]);
-  const activeFilterCount = [country !== 'Todos', study !== 'Todos', brand !== 'Todas', status !== 'Todas'].filter(Boolean).length;
+  const counts = useMemo(
+    () => ({
+      total: images.length,
+      correct: images.filter((item) => item.status === "Sin observaciones").length,
+      pending: images.filter((item) => item.status === "Sin revisar").length,
+      issues: images.filter((item) => !["Sin observaciones", "Sin revisar"].includes(item.status))
+        .length,
+    }),
+    [images],
+  );
+  const activeFilterCount = [
+    country !== "Todos",
+    study !== "Todos",
+    brand !== "Todas",
+    status !== "Todas",
+  ].filter(Boolean).length;
 
   useEffect(() => {
     if (!images.length) return;
-    const imageId = new URLSearchParams(window.location.search).get('imagen');
+    const imageId = new URLSearchParams(window.location.search).get("imagen");
     if (!imageId || openedLinkId.current === imageId) return;
     const match = images.find((item) => item.id === imageId);
-    if (match) { openedLinkId.current = imageId; openImage(match); }
+    if (match) {
+      openedLinkId.current = imageId;
+      openImage(match);
+    }
   }, [images]);
 
-  useEffect(() => { setVisibleLimit(60); }, [brand, country, searchQuery, status, study]);
+  useEffect(() => {
+    setVisibleLimit(60);
+  }, [brand, country, searchQuery, status, study]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("validation-split-percent");
+    if (!stored) return;
+    const saved = Number(stored);
+    if (!Number.isFinite(saved)) return;
+    const next = Math.min(70, Math.max(30, saved));
+    validationSplitValue.current = next;
+    setValidationSplit(next);
+  }, []);
 
   useEffect(() => {
     const missing = visibleImages.filter((item) => !item.imageUrl);
     if (!missing.length) return;
     let active = true;
-    void hydrateImageUrls(missing).then((hydrated) => {
-      if (!active) return;
-      const urls = new Map(hydrated.filter((item) => item.imageUrl).map((item) => [item.id, item.imageUrl]));
-      if (!urls.size) return;
-      setImages((current) => current.map((item) => urls.has(item.id) ? { ...item, imageUrl: urls.get(item.id) } : item));
-    }).catch((error) => showNotice(error instanceof Error ? error.message : 'No se pudieron cargar las vistas previas.', true));
-    return () => { active = false; };
+    void hydrateImageUrls(missing)
+      .then((hydrated) => {
+        if (!active) return;
+        const urls = new Map(
+          hydrated.filter((item) => item.imageUrl).map((item) => [item.id, item.imageUrl]),
+        );
+        if (!urls.size) return;
+        setImages((current) =>
+          current.map((item) =>
+            urls.has(item.id) ? { ...item, imageUrl: urls.get(item.id) } : item,
+          ),
+        );
+      })
+      .catch((error) =>
+        showNotice(
+          error instanceof Error ? error.message : "No se pudieron cargar las vistas previas.",
+          true,
+        ),
+      );
+    return () => {
+      active = false;
+    };
   }, [visibleImages]);
 
   useEffect(() => {
-    const context = (document as Document & { modelContext?: { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: () => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> } }).modelContext;
+    const context = (
+      document as Document & {
+        modelContext?: {
+          registerTool: (
+            tool: {
+              name: string;
+              title: string;
+              description: string;
+              inputSchema: object;
+              annotations: { readOnlyHint: boolean; untrustedContentHint: boolean };
+              execute: () => unknown;
+            },
+            options?: { signal?: AbortSignal },
+          ) => void | Promise<void>;
+        };
+      }
+    ).modelContext;
     if (!context?.registerTool) return;
     const lifecycle = new AbortController();
-    void Promise.resolve(context.registerTool({ name: 'get_catalog_summary', title: 'Consultar resumen del catálogo', description: 'Devuelve el total de imágenes y sus estados actuales sin modificar datos.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute: () => ({ ...counts, visible: filtered.length, countryFilter: country, studyFilter: study, brandFilter: brand, searchFilter: searchQuery, observationFilter: status }) }, { signal: lifecycle.signal })).catch(() => undefined);
+    void Promise.resolve(
+      context.registerTool(
+        {
+          name: "get_catalog_summary",
+          title: "Consultar resumen del catálogo",
+          description: "Devuelve el total de imágenes y sus estados actuales sin modificar datos.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          annotations: { readOnlyHint: true, untrustedContentHint: false },
+          execute: () => ({
+            ...counts,
+            visible: filtered.length,
+            countryFilter: country,
+            studyFilter: study,
+            brandFilter: brand,
+            searchFilter: searchQuery,
+            observationFilter: status,
+          }),
+        },
+        { signal: lifecycle.signal },
+      ),
+    ).catch(() => undefined);
     return () => lifecycle.abort();
   }, [brand, counts, country, filtered.length, searchQuery, status, study]);
 
   function showNotice(message: string, error = false) {
-    setNotice(message); setErrorNotice(error);
-    window.setTimeout(() => setNotice(''), 3600);
+    setNotice(message);
+    setErrorNotice(error);
+    window.setTimeout(() => setNotice(""), 3600);
   }
 
   async function handleLogin(event: React.FormEvent) {
-    event.preventDefault(); setAuthLoading(true);
+    event.preventDefault();
+    setAuthLoading(true);
     try {
       await signIn(username, password);
       const current = await getCurrentUser();
-      if (!current) throw new Error('No encontramos el perfil de este usuario.');
-      setRole(current.role); setUserEmail(username.trim()); setImages(await loadCatalog()); setPassword('');
+      if (!current) throw new Error("No encontramos el perfil de este usuario.");
+      setRole(current.role);
+      setUserEmail(username.trim());
+      setImages(await loadCatalog());
+      setPassword("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      showNotice(message.toLowerCase().includes('invalid login credentials') ? 'Usuario o contraseña incorrectos. Usa “admin”, “visualizador” o “validacion” sin espacios.' : (message || 'No fue posible iniciar sesión.'), true);
+      const message = error instanceof Error ? error.message : "";
+      showNotice(
+        message.toLowerCase().includes("invalid login credentials")
+          ? "Usuario o contraseña incorrectos. Usa “admin”, “visualizador” o “validacion” sin espacios."
+          : message || "No fue posible iniciar sesión.",
+        true,
+      );
+    } finally {
+      setAuthLoading(false);
     }
-    finally { setAuthLoading(false); }
   }
 
-  async function handleLogout() { await signOut(); setRole(null); setImages([]); setUserEmail(''); }
-  function openImage(item: CatalogImage) { setSelected(item); setDraftStatus(item.status); setDraftNotes(item.notes); }
+  async function handleLogout() {
+    await signOut();
+    setRole(null);
+    setImages([]);
+    setUserEmail("");
+  }
+  function openImage(item: CatalogImage) {
+    setSelected(item);
+    setDraftStatus(item.status);
+    setDraftNotes(item.notes);
+  }
 
   async function saveReview() {
-    if (!canReview) { showNotice('El perfil VALIDACION es de solo lectura.', true); return; }
+    if (!canReview) {
+      showNotice("El perfil VALIDACION es de solo lectura.", true);
+      return;
+    }
     if (!selected) return;
-    const updated: CatalogImage = { ...selected, status: draftStatus, notes: draftNotes.trim(), updatedAt: 'Ahora', isNew: false };
-    try { if (isBackendConfigured) await saveCatalogReview(updated); setImages((current) => current.map((item) => item.id === selected.id ? updated : item)); setSelected(null); showNotice('Observación guardada para todos los usuarios.'); }
-    catch (error) { showNotice(error instanceof Error ? error.message : 'No se pudo guardar la observación.', true); }
+    const updated: CatalogImage = {
+      ...selected,
+      status: draftStatus,
+      notes: draftNotes.trim(),
+      updatedAt: "Ahora",
+      isNew: false,
+    };
+    try {
+      if (isBackendConfigured) await saveCatalogReview(updated);
+      setImages((current) => current.map((item) => (item.id === selected.id ? updated : item)));
+      setSelected(null);
+      showNotice("Observación guardada para todos los usuarios.");
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : "No se pudo guardar la observación.",
+        true,
+      );
+    }
   }
 
   async function markVisibleCorrect() {
-    if (!canReview) { showNotice('El perfil VALIDACION es de solo lectura.', true); return; }
+    if (!canReview) {
+      showNotice("El perfil VALIDACION es de solo lectura.", true);
+      return;
+    }
     const visibleIds = new Set(filtered.map((item) => item.id));
-    const updated = images.map((item) => visibleIds.has(item.id) ? { ...item, status: 'Sin observaciones' as ReviewStatus, notes: '', updatedAt: 'Ahora', isNew: false } : item);
+    const updated = images.map((item) =>
+      visibleIds.has(item.id)
+        ? {
+            ...item,
+            status: "Sin observaciones" as ReviewStatus,
+            notes: "",
+            updatedAt: "Ahora",
+            isNew: false,
+          }
+        : item,
+    );
     try {
-      if (isBackendConfigured) await Promise.all(updated.filter((item) => visibleIds.has(item.id)).map(saveCatalogReview));
-      setImages(updated); setConfirmAll(false); showNotice(`${visibleIds.size} imágenes marcadas como correctas.`);
-    } catch (error) { showNotice(error instanceof Error ? error.message : 'No se pudieron guardar todos los cambios.', true); }
+      if (isBackendConfigured)
+        await Promise.all(updated.filter((item) => visibleIds.has(item.id)).map(saveCatalogReview));
+      setImages(updated);
+      setConfirmAll(false);
+      showNotice(`${visibleIds.size} imágenes marcadas como correctas.`);
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : "No se pudieron guardar todos los cambios.",
+        true,
+      );
+    }
   }
 
   async function handleFolder(fileList?: FileList | null) {
     if (!fileList?.length || !isAdmin) return;
-    if (!isBackendConfigured) { showNotice('La sincronización funciona al configurar Supabase; este es el modo de demostración.', true); return; }
-    setUploading(true); setUploadProgress({ done: 0, total: 0 });
+    if (!isBackendConfigured) {
+      showNotice(
+        "La sincronización funciona al configurar Supabase; este es el modo de demostración.",
+        true,
+      );
+      return;
+    }
+    setUploading(true);
+    setUploadProgress({ done: 0, total: 0 });
     try {
-      const result = await uploadCatalogFiles(Array.from(fileList), (done, count) => setUploadProgress({ done, total: count }));
+      const result = await uploadCatalogFiles(Array.from(fileList), (done, count) =>
+        setUploadProgress({ done, total: count }),
+      );
       setImages(await loadCatalog());
-      if (result.failed) showNotice(`${result.processed} imágenes guardadas y ${result.failed} no pudieron cargarse. ${result.firstError ?? ''}`, true);
+      if (result.failed)
+        showNotice(
+          `${result.processed} imágenes guardadas y ${result.failed} no pudieron cargarse. ${result.firstError ?? ""}`,
+          true,
+        );
       else showNotice(`${result.processed} imágenes procesadas correctamente.`);
-    } catch (error) { showNotice(error instanceof Error ? error.message : 'No se pudo sincronizar la carpeta.', true); }
-    finally { setUploading(false); if (fileInput.current) fileInput.current.value = ''; }
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : "No se pudo sincronizar la carpeta.",
+        true,
+      );
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
   }
 
   function clearFilters() {
-    setSearchQuery('');
-    setCountry('Todos');
-    setStudy('Todos');
-    setBrand('Todas');
-    setStatus('Todas');
+    setSearchQuery("");
+    setCountry("Todos");
+    setStudy("Todos");
+    setBrand("Todas");
+    setStatus("Todas");
+  }
+
+  function setValidationPanelSize(next: number, persist = true) {
+    const clamped = Math.min(70, Math.max(30, next));
+    validationSplitValue.current = clamped;
+    setValidationSplit(clamped);
+    if (persist) window.localStorage.setItem("validation-split-percent", String(clamped));
+  }
+
+  function resizeValidationPanels(clientX: number) {
+    const bounds = validationSplitRef.current?.getBoundingClientRect();
+    if (!bounds?.width) return;
+    setValidationPanelSize(((clientX - bounds.left) / bounds.width) * 100, false);
+  }
+
+  function handleValidationResizeKey(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next =
+      event.key === "Home"
+        ? 30
+        : event.key === "End"
+          ? 70
+          : validationSplitValue.current + (event.key === "ArrowRight" ? 5 : -5);
+    setValidationPanelSize(next);
   }
 
   async function removeImage() {
-    if (!canReview) { showNotice('El perfil VALIDACION no puede eliminar imágenes.', true); return; }
+    if (!canReview) {
+      showNotice("El perfil VALIDACION no puede eliminar imágenes.", true);
+      return;
+    }
     if (!deleteTarget || deleting) return;
     setDeleting(true);
     try {
@@ -215,37 +511,79 @@ export default function Home() {
       setImages((current) => current.filter((item) => item.id !== deleteTarget.id));
       if (selected?.id === deleteTarget.id) setSelected(null);
       setDeleteTarget(null);
-      showNotice('La foto fue eliminada del catálogo.');
+      showNotice("La foto fue eliminada del catálogo.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : 'No se pudo eliminar la foto.', true);
+      showNotice(error instanceof Error ? error.message : "No se pudo eliminar la foto.", true);
     } finally {
       setDeleting(false);
     }
   }
 
   async function exportExcel() {
-    if (!canReview) { showNotice('El perfil VALIDACION no puede descargar información.', true); return; }
+    if (!canReview) {
+      showNotice("El perfil VALIDACION no puede descargar información.", true);
+      return;
+    }
     setExporting(true);
     try {
       const [XLSX, imagesWithLinks] = await Promise.all([
-        import('xlsx'),
+        import("xlsx"),
         hydrateImageUrls(filtered, 30 * 24 * 60 * 60),
       ]);
-      const rows = imagesWithLinks.map((item) => ({ País: item.country, 'Código IRT': item.imageCode, Imagen: item.name, Nombre: item.masterNames.join(' | '), Carpeta: item.folder, Estudio: item.studies.join(' | ') || NO_STUDY, Marca: item.brands.join(' | '), Estado: item.status, Observaciones: item.notes, Actualización: item.updatedAt, 'Ver imagen': item.imageUrl ?? '' }));
+      const rows = imagesWithLinks.map((item) => ({
+        País: item.country,
+        "Código IRT": item.imageCode,
+        Imagen: item.name,
+        Nombre: item.masterNames.join(" | "),
+        Carpeta: item.folder,
+        Estudio: item.studies.join(" | ") || NO_STUDY,
+        Marca: item.brands.join(" | "),
+        Estado: item.status,
+        Observaciones: item.notes,
+        Actualización: item.updatedAt,
+        "Ver imagen": item.imageUrl ?? "",
+      }));
       const sheet = XLSX.utils.json_to_sheet(rows);
-      rows.forEach((row, index) => { const cell = sheet[`K${index + 2}`]; if (cell && row['Ver imagen']) cell.l = { Target: row['Ver imagen'], Tooltip: 'Abrir la imagen directamente' }; });
-      sheet['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 24 }, { wch: 34 }, { wch: 34 }, { wch: 24 }, { wch: 22 }, { wch: 22 }, { wch: 52 }, { wch: 18 }, { wch: 70 }];
-      const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Revisión de imágenes'); XLSX.writeFile(workbook, `revision-imagenes-${new Date().toISOString().slice(0, 10)}.xlsx`);
-      showNotice('Excel descargado con enlaces directos válidos durante 30 días.');
+      rows.forEach((row, index) => {
+        const cell = sheet[`K${index + 2}`];
+        if (cell && row["Ver imagen"])
+          cell.l = { Target: row["Ver imagen"], Tooltip: "Abrir la imagen directamente" };
+      });
+      sheet["!cols"] = [
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 24 },
+        { wch: 34 },
+        { wch: 34 },
+        { wch: 24 },
+        { wch: 22 },
+        { wch: 22 },
+        { wch: 52 },
+        { wch: 18 },
+        { wch: 70 },
+      ];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "Revisión de imágenes");
+      XLSX.writeFile(workbook, `revision-imagenes-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      showNotice("Excel descargado con enlaces directos válidos durante 30 días.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : 'No se pudo preparar el Excel.', true);
+      showNotice(error instanceof Error ? error.message : "No se pudo preparar el Excel.", true);
     } finally {
       setExporting(false);
     }
   }
 
   if (authLoading && !role) return <LoadingScreen />;
-  if (!role) return <LoginScreen username={username} password={password} setUsername={setUsername} setPassword={setPassword} onSubmit={handleLogin} />;
+  if (!role)
+    return (
+      <LoginScreen
+        username={username}
+        password={password}
+        setUsername={setUsername}
+        setPassword={setPassword}
+        onSubmit={handleLogin}
+      />
+    );
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -260,83 +598,785 @@ export default function Home() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/85 sm:flex"><UserRound className="size-4 text-[#8eb8ff]" /><span className="max-w-32 truncate lg:max-w-48">{userEmail}</span><Badge className="bg-[#1f5fbf] text-white">{roleLabel}</Badge></div>
-            <Button variant="ghost" onClick={() => void handleLogout()} aria-label="Cerrar sesión" className="logout-button border border-white/15 px-3 text-white hover:bg-white/10 hover:text-white sm:px-4"><LogOut className="size-4 shrink-0" /><span className="logout-label">Cerrar sesión</span></Button>
+            <div className="hidden items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/85 sm:flex">
+              <UserRound className="size-4 text-[#8eb8ff]" />
+              <span className="max-w-32 truncate lg:max-w-48">{userEmail}</span>
+              <Badge className="bg-[#1f5fbf] text-white">{roleLabel}</Badge>
+            </div>
+            <Button
+              variant="ghost"
+              onClick={() => void handleLogout()}
+              aria-label="Cerrar sesión"
+              className="logout-button border border-white/15 px-3 text-white hover:bg-white/10 hover:text-white sm:px-4"
+            >
+              <LogOut className="size-4 shrink-0" />
+              <span className="logout-label">Cerrar sesión</span>
+            </Button>
           </div>
         </div>
       </header>
-      <section className={`page-shell mx-auto w-full px-5 py-7 lg:px-8 lg:py-9 ${isReadOnly ? 'max-w-[1900px]' : 'max-w-[1480px]'}`}>
-        <div className={isReadOnly ? 'validation-split' : ''}>
-        <div className={isReadOnly ? 'validation-pane catalog-pane' : ''}>
-        <div className="hero-card mb-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-          <div className="min-w-0"><div className="mb-2 flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.16em] text-[#168a85]"><Sparkles className="size-4 shrink-0" /> Control de calidad regional</div><h1 className="max-w-3xl text-2xl font-extrabold tracking-[-0.035em] text-[#0b2b5d] sm:text-4xl">{isReadOnly ? 'Consulta el catálogo de imágenes' : 'Encuentra, revisa y documenta cada imagen'}</h1><p className="mt-2 max-w-2xl text-sm text-[#60779b] sm:text-base">{isReadOnly ? 'Busca, filtra y abre imágenes en modo de solo lectura.' : 'Consulta el catálogo, registra hallazgos y conserva una revisión compartida por todo el equipo.'}</p></div>
-          <div className="hero-actions flex flex-wrap gap-3">{isAdmin && <><input ref={fileInput} type="file" multiple accept="image/*" className="sr-only" {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => void handleFolder(event.target.files)} /><Button variant="outline" disabled={uploading} onClick={() => fileInput.current?.click()} className="h-11 rounded-lg border-[#b7c9e2] bg-white px-5 font-semibold text-[#0b2b5d]"><FolderOpen /> {uploading ? 'Sincronizando…' : 'Seleccionar carpeta'}</Button></>}{canReview && <Button onClick={() => void exportExcel()} disabled={exporting || !filtered.length} className="h-11 rounded-lg bg-[#1f5fbf] px-5 font-semibold text-white shadow-[0_8px_20px_rgba(31,95,191,.18)] hover:bg-[#174f9f]"><Download /> {exporting ? 'Preparando enlaces…' : 'Descargar Excel'}</Button>}</div>
-        </div>
-        {uploading && <div className="upload-progress"><div className="flex items-center justify-between text-sm"><span className="flex items-center gap-2 font-semibold text-[#0b2b5d]"><Upload className="size-4 text-[#1f5fbf]" /> Sincronizando carpeta</span><span>{uploadProgress.total ? `${uploadProgress.done} / ${uploadProgress.total}` : 'Leyendo imágenes…'}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dce7f5]"><div className="h-full rounded-full bg-[#1f5fbf] transition-all" style={{ width: uploadProgress.total ? `${(uploadProgress.done / uploadProgress.total) * 100}%` : '12%' }} /></div></div>}
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="Imágenes" value={counts.total} color="navy" /><Metric label="Sin observaciones" value={counts.correct} color="green" /><Metric label="Sin revisar" value={counts.pending} color="amber" /><Metric label="Con hallazgos" value={counts.issues} color="pink" /></div>
-        <div className="filter-shell">
-          <div className="filter-toolbar">
-            <SearchField label="Búsqueda rápida" value={searchQuery} placeholder="Código, archivo, producto, marca o estudio" onChange={setSearchQuery} />
-            <Button variant="outline" onClick={() => setFiltersOpen((current) => !current)} className={`filter-toggle h-12 rounded-lg px-4 ${filtersOpen ? 'is-open' : ''}`}><SlidersHorizontal className="size-4" /> Filtros{activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}</Button>
-            {canReview && <Button variant="outline" onClick={() => setConfirmAll(true)} disabled={!filtered.length} className="h-12 rounded-lg border-[#b7c9e2] bg-white px-4 font-semibold text-[#0b2b5d]"><CheckCircle2 /> Marcar visibles correctas</Button>}
+      <section
+        className={`page-shell mx-auto w-full px-5 py-7 lg:px-8 lg:py-9 ${isReadOnly ? "max-w-[1900px]" : "max-w-[1480px]"}`}
+      >
+        {isReadOnly && (
+          <div className="validation-layout-toolbar" aria-label="Distribución de la pantalla">
+            <span>
+              <Columns3 className="size-4" /> Ajustar espacio
+            </span>
+            <div>
+              <button
+                type="button"
+                onClick={() => setValidationPanelSize(65)}
+                aria-pressed={validationSplit === 65}
+              >
+                Más IRT
+              </button>
+              <button
+                type="button"
+                onClick={() => setValidationPanelSize(50)}
+                aria-pressed={validationSplit === 50}
+              >
+                50 / 50
+              </button>
+              <button
+                type="button"
+                onClick={() => setValidationPanelSize(35)}
+                aria-pressed={validationSplit === 35}
+              >
+                Más validación
+              </button>
+            </div>
+            <small>También puedes arrastrar el separador central.</small>
           </div>
-          {filtersOpen && <div className="filter-drawer"><div className="filter-drawer-heading"><div><p>Filtros avanzados</p><span>Afina los resultados sin saturar la pantalla.</span></div><Button variant="ghost" onClick={clearFilters} disabled={!activeFilterCount && !searchQuery} className="h-9 text-[#1f5fbf]"><RotateCcw className="size-4" /> Limpiar</Button></div><div className="filter-grid"><FilterSelect label="País" value={country} options={countries} onChange={setCountry} /><FilterSelect label="Estudio" value={study} options={studies} onChange={setStudy} /><FilterSelect label="Marca" value={brand} options={brands} onChange={setBrand} /><FilterSelect label="Observación" value={status} options={['Todas', ...REVIEW_OPTIONS]} onChange={setStatus} /></div></div>}
-          {(searchQuery || activeFilterCount > 0) && <div className="active-filter-row">{searchQuery && <FilterChip label={`Búsqueda: ${searchQuery}`} onRemove={() => setSearchQuery('')} />}{country !== 'Todos' && <FilterChip label={`País: ${country}`} onRemove={() => setCountry('Todos')} />}{study !== 'Todos' && <FilterChip label={`Estudio: ${study}`} onRemove={() => setStudy('Todos')} />}{brand !== 'Todas' && <FilterChip label={`Marca: ${brand}`} onRemove={() => setBrand('Todas')} />}{status !== 'Todas' && <FilterChip label={`Observación: ${status}`} onRemove={() => setStatus('Todas')} />}</div>}
-        </div>
-        <div className="mb-4 mt-7 flex items-center justify-between"><p className="text-sm font-medium text-[#47627a]"><span className="font-semibold text-[#102f4f]">{filtered.length}</span> resultados</p><p className="hidden text-sm text-muted-foreground sm:block">Haz clic en una imagen para abrirla</p></div>
-        {filtered.length ? <><div className="image-grid">{visibleImages.map((item, index) => <button key={item.id} onClick={() => openImage(item)} className="image-card group text-left"><div className={`thumb thumb-${(index % 4) + 1}`}>{item.imageUrl ? <img src={item.imageUrl} alt={item.name} loading="lazy" className="relative z-[1] h-full w-full bg-white object-contain p-3" /> : <><div className="thumb-code">{item.countryCode}</div><LoaderCircle className="size-8 animate-spin text-white/80" /><span className="text-sm font-medium text-white/75">Cargando vista…</span></>}<span className="expand-chip"><Expand className="size-4" /> Abrir</span></div><div className="p-4"><div className="mb-3 flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold text-[#102f4f]">{item.name}</p><p className="mt-1 truncate text-sm text-muted-foreground">Código: {item.imageCode}</p>{item.masterNames.length > 0 && <p className="mt-1 truncate text-sm text-muted-foreground">Nombre: {item.masterNames.join(' · ')}</p>}<p className="mt-1 truncate text-xs font-medium text-[#2a7775]">{item.studies.join(' · ') || NO_STUDY}</p>{item.brands.length > 0 && <p className="mt-1 truncate text-xs text-[#6a5262]">Marca: {item.brands.join(' · ')}</p>}</div><ChevronRight className="mt-0.5 size-5 shrink-0 text-[#8aa0b2]" /></div><div className="flex items-center justify-between gap-2"><span className={`status-pill status-${statusTone(item.status)}`}>{item.status}</span><span className="text-xs text-muted-foreground">{item.updatedAt}</span></div></div></button>)}</div>{visibleImages.length < filtered.length && <div className="mt-8 flex justify-center"><Button variant="outline" onClick={() => setVisibleLimit((current) => current + 60)} className="h-11 rounded-xl border-[#9ab1c4] bg-white px-6 text-[#102f4f]">Mostrar 60 más</Button></div>}</> : <div className="empty-state"><Search className="size-9 text-[#8aa0b2]" /><h2 className="mt-4 text-lg font-semibold text-[#102f4f]">No encontramos imágenes</h2><p className="mt-1 text-sm text-muted-foreground">{images.length ? 'Prueba con otro nombre o cambia los filtros.' : 'El administrador todavía no ha sincronizado una carpeta.'}</p></div>}
-        </div>
-        {isReadOnly && <AuditValidationPanel />}
+        )}
+        <div
+          ref={validationSplitRef}
+          className={`${isReadOnly ? "validation-split" : ""} ${isResizingValidation ? "is-resizing" : ""}`}
+          style={
+            isReadOnly
+              ? ({ "--irt-panel-width": `${validationSplit}%` } as React.CSSProperties)
+              : undefined
+          }
+        >
+          <div className={isReadOnly ? "validation-pane catalog-pane" : ""}>
+            <div className="hero-card mb-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.16em] text-[#168a85]">
+                  <Sparkles className="size-4 shrink-0" /> Control de calidad regional
+                </div>
+                <h1 className="max-w-3xl text-2xl font-extrabold tracking-[-0.035em] text-[#0b2b5d] sm:text-4xl">
+                  {isReadOnly
+                    ? "Consulta el catálogo de imágenes"
+                    : "Encuentra, revisa y documenta cada imagen"}
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm text-[#60779b] sm:text-base">
+                  {isReadOnly
+                    ? "Busca, filtra y abre imágenes en modo de solo lectura."
+                    : "Consulta el catálogo, registra hallazgos y conserva una revisión compartida por todo el equipo."}
+                </p>
+              </div>
+              <div className="hero-actions flex flex-wrap gap-3">
+                {isAdmin && (
+                  <>
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="sr-only"
+                      {...({
+                        webkitdirectory: "",
+                        directory: "",
+                      } as React.InputHTMLAttributes<HTMLInputElement>)}
+                      onChange={(event) => void handleFolder(event.target.files)}
+                    />
+                    <Button
+                      variant="outline"
+                      disabled={uploading}
+                      onClick={() => fileInput.current?.click()}
+                      className="h-11 rounded-lg border-[#b7c9e2] bg-white px-5 font-semibold text-[#0b2b5d]"
+                    >
+                      <FolderOpen /> {uploading ? "Sincronizando…" : "Seleccionar carpeta"}
+                    </Button>
+                  </>
+                )}
+                {canReview && (
+                  <Button
+                    onClick={() => void exportExcel()}
+                    disabled={exporting || !filtered.length}
+                    className="h-11 rounded-lg bg-[#1f5fbf] px-5 font-semibold text-white shadow-[0_8px_20px_rgba(31,95,191,.18)] hover:bg-[#174f9f]"
+                  >
+                    <Download /> {exporting ? "Preparando enlaces…" : "Descargar Excel"}
+                  </Button>
+                )}
+              </div>
+            </div>
+            {uploading && (
+              <div className="upload-progress">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 font-semibold text-[#0b2b5d]">
+                    <Upload className="size-4 text-[#1f5fbf]" /> Sincronizando carpeta
+                  </span>
+                  <span>
+                    {uploadProgress.total
+                      ? `${uploadProgress.done} / ${uploadProgress.total}`
+                      : "Leyendo imágenes…"}
+                  </span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dce7f5]">
+                  <div
+                    className="h-full rounded-full bg-[#1f5fbf] transition-all"
+                    style={{
+                      width: uploadProgress.total
+                        ? `${(uploadProgress.done / uploadProgress.total) * 100}%`
+                        : "12%",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric label="Imágenes" value={counts.total} color="navy" />
+              <Metric label="Sin observaciones" value={counts.correct} color="green" />
+              <Metric label="Sin revisar" value={counts.pending} color="amber" />
+              <Metric label="Con hallazgos" value={counts.issues} color="pink" />
+            </div>
+            <div className="filter-shell">
+              <div className="filter-toolbar">
+                <SearchField
+                  label="Búsqueda rápida"
+                  value={searchQuery}
+                  placeholder="Código, archivo, producto, marca o estudio"
+                  onChange={setSearchQuery}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                  className={`filter-toggle h-12 rounded-lg px-4 ${filtersOpen ? "is-open" : ""}`}
+                >
+                  <SlidersHorizontal className="size-4" /> Filtros
+                  {activeFilterCount > 0 && (
+                    <span className="filter-count">{activeFilterCount}</span>
+                  )}
+                </Button>
+                {canReview && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setConfirmAll(true)}
+                    disabled={!filtered.length}
+                    className="h-12 rounded-lg border-[#b7c9e2] bg-white px-4 font-semibold text-[#0b2b5d]"
+                  >
+                    <CheckCircle2 /> Marcar visibles correctas
+                  </Button>
+                )}
+              </div>
+              {filtersOpen && (
+                <div className="filter-drawer">
+                  <div className="filter-drawer-heading">
+                    <div>
+                      <p>Filtros avanzados</p>
+                      <span>Afina los resultados sin saturar la pantalla.</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      onClick={clearFilters}
+                      disabled={!activeFilterCount && !searchQuery}
+                      className="h-9 text-[#1f5fbf]"
+                    >
+                      <RotateCcw className="size-4" /> Limpiar
+                    </Button>
+                  </div>
+                  <div className="filter-grid">
+                    <FilterSelect
+                      label="País"
+                      value={country}
+                      options={countries}
+                      onChange={setCountry}
+                    />
+                    <FilterSelect
+                      label="Estudio"
+                      value={study}
+                      options={studies}
+                      onChange={setStudy}
+                    />
+                    <FilterSelect
+                      label="Marca"
+                      value={brand}
+                      options={brands}
+                      onChange={setBrand}
+                    />
+                    <FilterSelect
+                      label="Observación"
+                      value={status}
+                      options={["Todas", ...REVIEW_OPTIONS]}
+                      onChange={setStatus}
+                    />
+                  </div>
+                </div>
+              )}
+              {(searchQuery || activeFilterCount > 0) && (
+                <div className="active-filter-row">
+                  {searchQuery && (
+                    <FilterChip
+                      label={`Búsqueda: ${searchQuery}`}
+                      onRemove={() => setSearchQuery("")}
+                    />
+                  )}
+                  {country !== "Todos" && (
+                    <FilterChip label={`País: ${country}`} onRemove={() => setCountry("Todos")} />
+                  )}
+                  {study !== "Todos" && (
+                    <FilterChip label={`Estudio: ${study}`} onRemove={() => setStudy("Todos")} />
+                  )}
+                  {brand !== "Todas" && (
+                    <FilterChip label={`Marca: ${brand}`} onRemove={() => setBrand("Todas")} />
+                  )}
+                  {status !== "Todas" && (
+                    <FilterChip
+                      label={`Observación: ${status}`}
+                      onRemove={() => setStatus("Todas")}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="mb-4 mt-7 flex items-center justify-between">
+              <p className="text-sm font-medium text-[#47627a]">
+                <span className="font-semibold text-[#102f4f]">{filtered.length}</span> resultados
+              </p>
+              <p className="hidden text-sm text-muted-foreground sm:block">
+                Haz clic en una imagen para abrirla
+              </p>
+            </div>
+            {filtered.length ? (
+              <>
+                <div className="image-grid">
+                  {visibleImages.map((item, index) => (
+                    <button
+                      key={item.id}
+                      onClick={() => openImage(item)}
+                      className="image-card group text-left"
+                    >
+                      <div className={`thumb thumb-${(index % 4) + 1}`}>
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            loading="lazy"
+                            className="relative z-[1] h-full w-full bg-white object-contain p-3"
+                          />
+                        ) : (
+                          <>
+                            <div className="thumb-code">{item.countryCode}</div>
+                            <LoaderCircle className="size-8 animate-spin text-white/80" />
+                            <span className="text-sm font-medium text-white/75">
+                              Cargando vista…
+                            </span>
+                          </>
+                        )}
+                        <span className="expand-chip">
+                          <Expand className="size-4" /> Abrir
+                        </span>
+                      </div>
+                      <div className="p-4">
+                        <div className="mb-3 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-[#102f4f]">{item.name}</p>
+                            <p className="mt-1 truncate text-sm text-muted-foreground">
+                              Código: {item.imageCode}
+                            </p>
+                            {item.masterNames.length > 0 && (
+                              <p className="mt-1 truncate text-sm text-muted-foreground">
+                                Nombre: {item.masterNames.join(" · ")}
+                              </p>
+                            )}
+                            <p className="mt-1 truncate text-xs font-medium text-[#2a7775]">
+                              {item.studies.join(" · ") || NO_STUDY}
+                            </p>
+                            {item.brands.length > 0 && (
+                              <p className="mt-1 truncate text-xs text-[#6a5262]">
+                                Marca: {item.brands.join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                          <ChevronRight className="mt-0.5 size-5 shrink-0 text-[#8aa0b2]" />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`status-pill status-${statusTone(item.status)}`}>
+                            {item.status}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{item.updatedAt}</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {visibleImages.length < filtered.length && (
+                  <div className="mt-8 flex justify-center">
+                    <Button
+                      variant="outline"
+                      onClick={() => setVisibleLimit((current) => current + 60)}
+                      className="h-11 rounded-xl border-[#9ab1c4] bg-white px-6 text-[#102f4f]"
+                    >
+                      Mostrar 60 más
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="empty-state">
+                <Search className="size-9 text-[#8aa0b2]" />
+                <h2 className="mt-4 text-lg font-semibold text-[#102f4f]">
+                  No encontramos imágenes
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {images.length
+                    ? "Prueba con otro nombre o cambia los filtros."
+                    : "El administrador todavía no ha sincronizado una carpeta."}
+                </p>
+              </div>
+            )}
+          </div>
+          {isReadOnly && (
+            <div
+              className="validation-resizer"
+              role="separator"
+              aria-label="Ajustar espacio entre IRT y validación"
+              aria-orientation="vertical"
+              aria-valuemin={30}
+              aria-valuemax={70}
+              aria-valuenow={Math.round(validationSplit)}
+              tabIndex={0}
+              title="Arrastra para ajustar · Doble clic para volver a 50/50"
+              onDoubleClick={() => setValidationPanelSize(50)}
+              onKeyDown={handleValidationResizeKey}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setIsResizingValidation(true);
+                resizeValidationPanels(event.clientX);
+              }}
+              onPointerMove={(event) => {
+                if (isResizingValidation) resizeValidationPanels(event.clientX);
+              }}
+              onPointerUp={(event) => {
+                if (!isResizingValidation) return;
+                setIsResizingValidation(false);
+                event.currentTarget.releasePointerCapture(event.pointerId);
+                setValidationPanelSize(validationSplitValue.current);
+              }}
+              onPointerCancel={() => {
+                setIsResizingValidation(false);
+                setValidationPanelSize(validationSplitValue.current);
+              }}
+            >
+              <span>
+                <GripVertical className="size-4" />
+                <small>{Math.round(validationSplit)}%</small>
+              </span>
+            </div>
+          )}
+          {isReadOnly && <AuditValidationPanel />}
         </div>
       </section>
-      <footer className="mx-auto flex max-w-[1480px] flex-col gap-2 border-t px-5 py-6 text-sm text-[#60779b] sm:flex-row sm:items-center sm:justify-between lg:px-8"><span className="flex items-center gap-2"><ShieldCheck className="size-4 text-[#168a85]" /> Acceso protegido por usuario y contraseña</span><span>Validación solo consulta; Visualizador revisa; Administrador también sincroniza carpetas</span></footer>
+      <footer className="mx-auto flex max-w-[1480px] flex-col gap-2 border-t px-5 py-6 text-sm text-[#60779b] sm:flex-row sm:items-center sm:justify-between lg:px-8">
+        <span className="flex items-center gap-2">
+          <ShieldCheck className="size-4 text-[#168a85]" /> Acceso protegido por usuario y
+          contraseña
+        </span>
+        <span>
+          Validación solo consulta; Visualizador revisa; Administrador también sincroniza carpetas
+        </span>
+      </footer>
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="max-h-[96dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-x-hidden overflow-y-auto p-0 sm:w-full sm:max-w-4xl">
-          {selected && <div className="grid md:min-h-[520px] md:grid-cols-[1.25fr_.75fr]">
-            <div className="relative flex min-h-[230px] items-center justify-center overflow-hidden bg-[#0b2b5d] p-4 sm:min-h-[310px] sm:p-10">
-              <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(circle_at_20%_20%,#5d9df0_0,transparent_36%),radial-gradient(circle_at_80%_75%,#168a85_0,transparent_35%)]" />
-              {selected.imageUrl ? <img src={selected.imageUrl} alt={selected.name} className="relative max-h-[42dvh] max-w-full object-contain md:max-h-[68vh]" /> : <div className="relative flex flex-col items-center text-white/75"><FileImage className="size-16 sm:size-20" /><p className="mt-4 break-all text-center text-base font-medium sm:text-lg">{selected.name}</p></div>}
-            </div>
-            <div className="flex min-w-0 flex-col p-4 sm:p-6">
-              <DialogHeader>
-                <div className="mb-1 flex flex-wrap items-center gap-2"><Badge className="bg-[#e8f3f6] text-[#16526b]">{selected.country}</Badge>{(selected.studies.length ? selected.studies : [NO_STUDY]).map((value) => <Badge key={`study-${value}`} className="bg-[#e7f5f5] text-[#176b68]">{value}</Badge>)}{selected.isNew && <Badge className="bg-amber-100 text-amber-800">Nueva</Badge>}</div>
-                <DialogTitle className="break-all text-lg text-[#102f4f] sm:text-xl">{selected.name}</DialogTitle>
-                <DialogDescription className="space-y-1 break-words"><span className="block">Código: {selected.imageCode}</span><span className="block break-all">Carpeta: {selected.folder}</span></DialogDescription>
-              </DialogHeader>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-3"><p className="text-[.68rem] font-bold uppercase tracking-wider text-[#61788b]">Nombre del producto</p><p className="mt-1 break-words text-sm font-semibold text-[#102f4f]">{selected.masterNames.join(' · ') || 'Sin nombre identificado'}</p></div>
-                <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-3"><p className="text-[.68rem] font-bold uppercase tracking-wider text-[#61788b]">Marca</p><p className="mt-1 break-words text-sm font-semibold text-[#102f4f]">{selected.brands.join(' · ') || 'Sin marca identificada'}</p></div>
+          {selected && (
+            <div className="grid md:min-h-[520px] md:grid-cols-[1.25fr_.75fr]">
+              <div className="relative flex min-h-[230px] items-center justify-center overflow-hidden bg-[#0b2b5d] p-4 sm:min-h-[310px] sm:p-10">
+                <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(circle_at_20%_20%,#5d9df0_0,transparent_36%),radial-gradient(circle_at_80%_75%,#168a85_0,transparent_35%)]" />
+                {selected.imageUrl ? (
+                  <img
+                    src={selected.imageUrl}
+                    alt={selected.name}
+                    className="relative max-h-[42dvh] max-w-full object-contain md:max-h-[68vh]"
+                  />
+                ) : (
+                  <div className="relative flex flex-col items-center text-white/75">
+                    <FileImage className="size-16 sm:size-20" />
+                    <p className="mt-4 break-all text-center text-base font-medium sm:text-lg">
+                      {selected.name}
+                    </p>
+                  </div>
+                )}
               </div>
-              <div className="mt-6 flex-1 space-y-6">
-                {isReadOnly && <div className="rounded-xl border border-[#cbd9ea] bg-[#eef4fb] p-3 text-sm font-semibold text-[#29475f]"><ShieldCheck className="mr-2 inline size-4 text-[#1f5fbf]" />Modo de solo lectura</div>}
-                <div className="block">
-                  <span className="mb-2 block text-sm font-semibold text-[#29475f]">Resultado de la revisión</span>
-                  {canReview ? <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as ReviewStatus)}><SelectTrigger className="h-11 w-full rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{REVIEW_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select> : <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] px-4 py-3 text-sm text-[#29475f]">{selected.status}</div>}
+              <div className="flex min-w-0 flex-col p-4 sm:p-6">
+                <DialogHeader>
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <Badge className="bg-[#e8f3f6] text-[#16526b]">{selected.country}</Badge>
+                    {(selected.studies.length ? selected.studies : [NO_STUDY]).map((value) => (
+                      <Badge key={`study-${value}`} className="bg-[#e7f5f5] text-[#176b68]">
+                        {value}
+                      </Badge>
+                    ))}
+                    {selected.isNew && <Badge className="bg-amber-100 text-amber-800">Nueva</Badge>}
+                  </div>
+                  <DialogTitle className="break-all text-lg text-[#102f4f] sm:text-xl">
+                    {selected.name}
+                  </DialogTitle>
+                  <DialogDescription className="space-y-1 break-words">
+                    <span className="block">Código: {selected.imageCode}</span>
+                    <span className="block break-all">Carpeta: {selected.folder}</span>
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-3">
+                    <p className="text-[.68rem] font-bold uppercase tracking-wider text-[#61788b]">
+                      Nombre del producto
+                    </p>
+                    <p className="mt-1 break-words text-sm font-semibold text-[#102f4f]">
+                      {selected.masterNames.join(" · ") || "Sin nombre identificado"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-3">
+                    <p className="text-[.68rem] font-bold uppercase tracking-wider text-[#61788b]">
+                      Marca
+                    </p>
+                    <p className="mt-1 break-words text-sm font-semibold text-[#102f4f]">
+                      {selected.brands.join(" · ") || "Sin marca identificada"}
+                    </p>
+                  </div>
                 </div>
-                <div className="block">
-                  <span className="mb-2 block text-sm font-semibold text-[#29475f]">Detalle de la observación</span>
-                  {canReview ? <Textarea value={draftNotes} onChange={(event) => setDraftNotes(event.target.value)} placeholder="Describe lo que encontraste en la imagen…" className="min-h-32 resize-none rounded-xl" /> : <div className="min-h-24 whitespace-pre-wrap rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-4 text-sm text-[#60779b]">{selected.notes || 'Sin observaciones registradas.'}</div>}
+                <div className="mt-6 flex-1 space-y-6">
+                  {isReadOnly && (
+                    <div className="rounded-xl border border-[#cbd9ea] bg-[#eef4fb] p-3 text-sm font-semibold text-[#29475f]">
+                      <ShieldCheck className="mr-2 inline size-4 text-[#1f5fbf]" />
+                      Modo de solo lectura
+                    </div>
+                  )}
+                  <div className="block">
+                    <span className="mb-2 block text-sm font-semibold text-[#29475f]">
+                      Resultado de la revisión
+                    </span>
+                    {canReview ? (
+                      <Select
+                        value={draftStatus}
+                        onValueChange={(value) => setDraftStatus(value as ReviewStatus)}
+                      >
+                        <SelectTrigger className="h-11 w-full rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {REVIEW_OPTIONS.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] px-4 py-3 text-sm text-[#29475f]">
+                        {selected.status}
+                      </div>
+                    )}
+                  </div>
+                  <div className="block">
+                    <span className="mb-2 block text-sm font-semibold text-[#29475f]">
+                      Detalle de la observación
+                    </span>
+                    {canReview ? (
+                      <Textarea
+                        value={draftNotes}
+                        onChange={(event) => setDraftNotes(event.target.value)}
+                        placeholder="Describe lo que encontraste en la imagen…"
+                        className="min-h-32 resize-none rounded-xl"
+                      />
+                    ) : (
+                      <div className="min-h-24 whitespace-pre-wrap rounded-xl border border-[#dbe4ea] bg-[#f6f9fb] p-4 text-sm text-[#60779b]">
+                        {selected.notes || "Sin observaciones registradas."}
+                      </div>
+                    )}
+                  </div>
                 </div>
+                <DialogFooter className="mt-7 grid grid-cols-1 gap-2 bg-[#f5f8fb] sm:grid sm:grid-cols-1 sm:justify-stretch">
+                  <Button variant="outline" onClick={() => setSelected(null)} className="w-full">
+                    {isReadOnly ? "Cerrar" : "Cancelar"}
+                  </Button>
+                  {canReview && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => setDeleteTarget(selected)}
+                        className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                      >
+                        <Trash2 className="size-4" /> Eliminar foto
+                      </Button>
+                      <Button
+                        onClick={() => void saveReview()}
+                        className="w-full bg-[#1f5fbf] text-white hover:bg-[#174f9f]"
+                      >
+                        Guardar observación
+                      </Button>
+                    </>
+                  )}
+                </DialogFooter>
               </div>
-              <DialogFooter className="mt-7 grid grid-cols-1 gap-2 bg-[#f5f8fb] sm:grid sm:grid-cols-1 sm:justify-stretch"><Button variant="outline" onClick={() => setSelected(null)} className="w-full">{isReadOnly ? 'Cerrar' : 'Cancelar'}</Button>{canReview && <><Button variant="outline" onClick={() => setDeleteTarget(selected)} className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="size-4" /> Eliminar foto</Button><Button onClick={() => void saveReview()} className="w-full bg-[#1f5fbf] text-white hover:bg-[#174f9f]">Guardar observación</Button></>}</DialogFooter>
             </div>
-          </div>}
+          )}
         </DialogContent>
       </Dialog>
-      {canReview && <AlertDialog open={confirmAll} onOpenChange={setConfirmAll}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Marcar {filtered.length} imágenes como correctas?</AlertDialogTitle><AlertDialogDescription>Se cambiarán las imágenes visibles a “Sin observaciones” y se eliminarán sus notas actuales.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => void markVisibleCorrect()} className="bg-[#1f5fbf] text-white hover:bg-[#174f9f]">Sí, marcar correctas</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
-      {canReview && <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !deleting && setDeleteTarget(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Eliminar esta foto?</AlertDialogTitle><AlertDialogDescription>Se eliminará <strong>{deleteTarget?.name}</strong> del catálogo y del almacenamiento compartido. Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel><AlertDialogAction disabled={deleting} onClick={() => void removeImage()} className="bg-red-600 text-white hover:bg-red-700"><Trash2 className="size-4" /> {deleting ? 'Eliminando…' : 'Sí, eliminar foto'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>}
-      {notice && <div role="status" className={`toast-notice ${errorNotice ? 'toast-error' : ''}`}>{errorNotice ? <X className="size-5 text-red-500" /> : <CheckCircle2 className="size-5 text-emerald-500" />}{notice}</div>}
+      {canReview && (
+        <AlertDialog open={confirmAll} onOpenChange={setConfirmAll}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                ¿Marcar {filtered.length} imágenes como correctas?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Se cambiarán las imágenes visibles a “Sin observaciones” y se eliminarán sus notas
+                actuales.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => void markVisibleCorrect()}
+                className="bg-[#1f5fbf] text-white hover:bg-[#174f9f]"
+              >
+                Sí, marcar correctas
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+      {canReview && (
+        <AlertDialog
+          open={Boolean(deleteTarget)}
+          onOpenChange={(open) => !open && !deleting && setDeleteTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar esta foto?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se eliminará <strong>{deleteTarget?.name}</strong> del catálogo y del almacenamiento
+                compartido. Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deleting}
+                onClick={() => void removeImage()}
+                className="bg-red-600 text-white hover:bg-red-700"
+              >
+                <Trash2 className="size-4" /> {deleting ? "Eliminando…" : "Sí, eliminar foto"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+      {notice && (
+        <div role="status" className={`toast-notice ${errorNotice ? "toast-error" : ""}`}>
+          {errorNotice ? (
+            <X className="size-5 text-red-500" />
+          ) : (
+            <CheckCircle2 className="size-5 text-emerald-500" />
+          )}
+          {notice}
+        </div>
+      )}
     </main>
   );
 }
 
-function LoginScreen({ username, password, setUsername, setPassword, onSubmit }: { username: string; password: string; setUsername: (value: string) => void; setPassword: (value: string) => void; onSubmit: (event: React.FormEvent) => void }) {
-  return <main className="login-shell"><section className="login-card"><BrandLogo dark /><div className="mt-8 border-t border-[#dce5ed] pt-8"><p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#168a85]">Acceso al catálogo IRT</p><h1 className="mt-4 text-4xl font-extrabold tracking-tight text-[#0b2b5d]">Bienvenido</h1><p className="mt-4 text-base leading-7 text-[#60779b]">Ingresa con el usuario asignado para consultar o revisar el catálogo compartido.</p></div>{isBackendConfigured ? <form onSubmit={onSubmit} className="mt-8 space-y-5"><label className="block"><span className="mb-2 block text-sm font-bold text-[#29476f]">Nombre de usuario</span><Input type="text" required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Admin, Visualizador o Validación" className="h-14 rounded-lg border-[#c7d6e9] bg-[#f2f6fc] px-5 text-lg" /></label><label className="block"><span className="mb-2 block text-sm font-bold text-[#29476f]">Contraseña</span><Input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-14 rounded-lg border-[#c7d6e9] bg-[#f2f6fc] px-5 text-lg" /></label><Button type="submit" className="h-14 w-full rounded-lg bg-[#1f5fbf] text-base font-bold text-white shadow-lg hover:bg-[#174f9f]">Ingresar al catálogo <ChevronRight className="ml-2 size-5" /></Button></form> : <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5"><p className="font-semibold text-amber-900">Configuración pendiente</p><p className="mt-1 text-sm leading-6 text-amber-800">La base compartida todavía no está conectada. Por seguridad, el modo de demostración fue desactivado.</p></div>}<p className="mt-8 border-t border-[#dce5ed] pt-6 text-sm text-[#60779b]">¿Necesitas acceso? Contacta al administrador del catálogo.</p></section></main>;
+function LoginScreen({
+  username,
+  password,
+  setUsername,
+  setPassword,
+  onSubmit,
+}: {
+  username: string;
+  password: string;
+  setUsername: (value: string) => void;
+  setPassword: (value: string) => void;
+  onSubmit: (event: React.FormEvent) => void;
+}) {
+  return (
+    <main className="login-shell">
+      <section className="login-card">
+        <BrandLogo dark />
+        <div className="mt-8 border-t border-[#dce5ed] pt-8">
+          <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#168a85]">
+            Acceso al catálogo IRT
+          </p>
+          <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-[#0b2b5d]">Bienvenido</h1>
+          <p className="mt-4 text-base leading-7 text-[#60779b]">
+            Ingresa con el usuario asignado para consultar o revisar el catálogo compartido.
+          </p>
+        </div>
+        {isBackendConfigured ? (
+          <form onSubmit={onSubmit} className="mt-8 space-y-5">
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-[#29476f]">Nombre de usuario</span>
+              <Input
+                type="text"
+                required
+                autoComplete="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Admin, Visualizador o Validación"
+                className="h-14 rounded-lg border-[#c7d6e9] bg-[#f2f6fc] px-5 text-lg"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-[#29476f]">Contraseña</span>
+              <Input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="h-14 rounded-lg border-[#c7d6e9] bg-[#f2f6fc] px-5 text-lg"
+              />
+            </label>
+            <Button
+              type="submit"
+              className="h-14 w-full rounded-lg bg-[#1f5fbf] text-base font-bold text-white shadow-lg hover:bg-[#174f9f]"
+            >
+              Ingresar al catálogo <ChevronRight className="ml-2 size-5" />
+            </Button>
+          </form>
+        ) : (
+          <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <p className="font-semibold text-amber-900">Configuración pendiente</p>
+            <p className="mt-1 text-sm leading-6 text-amber-800">
+              La base compartida todavía no está conectada. Por seguridad, el modo de demostración
+              fue desactivado.
+            </p>
+          </div>
+        )}
+        <p className="mt-8 border-t border-[#dce5ed] pt-6 text-sm text-[#60779b]">
+          ¿Necesitas acceso? Contacta al administrador del catálogo.
+        </p>
+      </section>
+    </main>
+  );
 }
 
-function LoadingScreen() { return <main className="login-shell"><div className="flex flex-col items-center text-[#0b2b5d]"><LoaderCircle className="size-9 animate-spin text-[#1f5fbf]" /><p className="mt-3 text-sm font-semibold">Abriendo el catálogo…</p></div></main>; }
-function Metric({ label, value, color }: { label: string; value: number; color: 'navy' | 'green' | 'amber' | 'pink' }) { return <div className={`metric metric-${color}`}><span className="metric-dot" /><div><p className="text-2xl font-semibold tracking-tight text-[#102f4f]">{value}</p><p className="text-sm text-muted-foreground">{label}</p></div></div>; }
-function SearchField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange: (value: string) => void }) { return <label className="flex min-w-0 flex-col gap-1.5"><span className="text-xs font-semibold uppercase tracking-wider text-[#61788b]">{label}</span><div className="relative min-w-0"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#47627a]" /><Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-12 w-full min-w-0 rounded-xl border-[#d6e0e8] bg-white pl-9 pr-9 shadow-sm" />{value && <button type="button" onClick={() => onChange('')} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label={`Limpiar ${label.toLowerCase()}`}><X className="size-4" /></button>}</div></label>; }
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) { return <label className="flex min-w-0 flex-col gap-1.5"><span className="text-xs font-semibold uppercase tracking-wider text-[#61788b]">{label}</span><Select value={value} onValueChange={(next) => onChange(next as string)}><SelectTrigger className="h-12 w-full min-w-0 rounded-xl border-[#d6e0e8] bg-white px-3 shadow-sm"><SelectValue /></SelectTrigger><SelectContent>{options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select></label>; }
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) { return <button type="button" onClick={onRemove} className="filter-chip" title={`Quitar ${label}`}>{label}<X className="size-3.5" /></button>; }
-function BrandLogo({ dark = false }: { dark?: boolean }) { return <div className={`brand-logo ${dark ? 'brand-logo-dark' : ''}`} aria-label="Dichter & Neira Ruteador"><div className="brand-mark" aria-hidden="true">dn</div><div className="brand-wordmark"><strong>Ruteador</strong><span>planeación</span></div></div>; }
+function LoadingScreen() {
+  return (
+    <main className="login-shell">
+      <div className="flex flex-col items-center text-[#0b2b5d]">
+        <LoaderCircle className="size-9 animate-spin text-[#1f5fbf]" />
+        <p className="mt-3 text-sm font-semibold">Abriendo el catálogo…</p>
+      </div>
+    </main>
+  );
+}
+function Metric({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: "navy" | "green" | "amber" | "pink";
+}) {
+  return (
+    <div className={`metric metric-${color}`}>
+      <span className="metric-dot" />
+      <div>
+        <p className="text-2xl font-semibold tracking-tight text-[#102f4f]">{value}</p>
+        <p className="text-sm text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  );
+}
+function SearchField({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wider text-[#61788b]">{label}</span>
+      <div className="relative min-w-0">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#47627a]" />
+        <Input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="h-12 w-full min-w-0 rounded-xl border-[#d6e0e8] bg-white pl-9 pr-9 shadow-sm"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted"
+            aria-label={`Limpiar ${label.toLowerCase()}`}
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+    </label>
+  );
+}
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wider text-[#61788b]">{label}</span>
+      <Select value={value} onValueChange={(next) => onChange(next as string)}>
+        <SelectTrigger className="h-12 w-full min-w-0 rounded-xl border-[#d6e0e8] bg-white px-3 shadow-sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <button type="button" onClick={onRemove} className="filter-chip" title={`Quitar ${label}`}>
+      {label}
+      <X className="size-3.5" />
+    </button>
+  );
+}
+function BrandLogo({ dark = false }: { dark?: boolean }) {
+  return (
+    <div
+      className={`brand-logo ${dark ? "brand-logo-dark" : ""}`}
+      aria-label="Dichter & Neira Ruteador"
+    >
+      <div className="brand-mark" aria-hidden="true">
+        dn
+      </div>
+      <div className="brand-wordmark">
+        <strong>Ruteador</strong>
+        <span>planeación</span>
+      </div>
+    </div>
+  );
+}
