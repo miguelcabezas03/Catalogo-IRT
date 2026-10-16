@@ -659,281 +659,341 @@ export default function Home() {
           }
         >
           <div className={isReadOnly ? "validation-pane catalog-pane" : ""}>
-            <div className="hero-card mb-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-              <div className="min-w-0">
-                <div className="mb-2 flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.16em] text-[#168a85]">
-                  <Sparkles className="size-4 shrink-0" /> Control de calidad regional
+            <div className={isReadOnly ? "catalog-scroll" : undefined}>
+              <div className="hero-card mb-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+                <div className="min-w-0">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.16em] text-[#168a85]">
+                    <Sparkles className="size-4 shrink-0" /> Control de calidad regional
+                  </div>
+                  <h1 className="max-w-3xl text-2xl font-extrabold tracking-[-0.035em] text-[#0b2b5d] sm:text-4xl">
+                    {isReadOnly
+                      ? "Consulta el catálogo de imágenes"
+                      : "Encuentra, revisa y documenta cada imagen"}
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm text-[#60779b] sm:text-base">
+                    {isReadOnly
+                      ? "Busca, filtra y abre imágenes en modo de solo lectura."
+                      : "Consulta el catálogo, registra hallazgos y conserva una revisión compartida por todo el equipo."}
+                  </p>
                 </div>
-                <h1 className="max-w-3xl text-2xl font-extrabold tracking-[-0.035em] text-[#0b2b5d] sm:text-4xl">
-                  {isReadOnly
-                    ? "Consulta el catálogo de imágenes"
-                    : "Encuentra, revisa y documenta cada imagen"}
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm text-[#60779b] sm:text-base">
-                  {isReadOnly
-                    ? "Busca, filtra y abre imágenes en modo de solo lectura."
-                    : "Consulta el catálogo, registra hallazgos y conserva una revisión compartida por todo el equipo."}
-                </p>
-              </div>
-              <div className="hero-actions flex flex-wrap gap-3">
-                {isAdmin && (
-                  <>
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      className="sr-only"
-                      {...({
-                        webkitdirectory: "",
-                        directory: "",
-                      } as React.InputHTMLAttributes<HTMLInputElement>)}
-                      onChange={(event) => void handleFolder(event.target.files)}
-                    />
-                    <Button
-                      variant="outline"
-                      disabled={uploading}
-                      onClick={() => fileInput.current?.click()}
-                      className="h-11 rounded-lg border-[#b7c9e2] bg-white px-5 font-semibold text-[#0b2b5d]"
-                    >
-                      <FolderOpen /> {uploading ? "Sincronizando…" : "Seleccionar carpeta"}
-                    </Button>
-                  </>
-                )}
-                {canReview && (
-                  <Button
-                    onClick={() => void exportExcel()}
-                    disabled={exporting || !filtered.length}
-                    className="h-11 rounded-lg bg-[#1f5fbf] px-5 font-semibold text-white shadow-[0_8px_20px_rgba(31,95,191,.18)] hover:bg-[#174f9f]"
-                  >
-                    <Download /> {exporting ? "Preparando enlaces…" : "Descargar Excel"}
-                  </Button>
-                )}
-              </div>
-            </div>
-            {uploading && (
-              <div className="upload-progress">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2 font-semibold text-[#0b2b5d]">
-                    <Upload className="size-4 text-[#1f5fbf]" /> Sincronizando carpeta
-                  </span>
-                  <span>
-                    {uploadProgress.total
-                      ? `${uploadProgress.done} / ${uploadProgress.total}`
-                      : "Leyendo imágenes…"}
-                  </span>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dce7f5]">
-                  <div
-                    className="h-full rounded-full bg-[#1f5fbf] transition-all"
-                    style={{
-                      width: uploadProgress.total
-                        ? `${(uploadProgress.done / uploadProgress.total) * 100}%`
-                        : "12%",
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Metric label="Imágenes" value={counts.total} color="navy" />
-              <Metric label="Sin observaciones" value={counts.correct} color="green" />
-              <Metric label="Sin revisar" value={counts.pending} color="amber" />
-              <Metric label="Con hallazgos" value={counts.issues} color="pink" />
-            </div>
-            <div className="filter-shell">
-              <div className="filter-toolbar">
-                <SearchField
-                  label="Búsqueda rápida"
-                  value={searchQuery}
-                  placeholder="Código, archivo, producto, marca o estudio"
-                  onChange={setSearchQuery}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => setFiltersOpen((current) => !current)}
-                  className={`filter-toggle h-12 rounded-lg px-4 ${filtersOpen ? "is-open" : ""}`}
-                >
-                  <SlidersHorizontal className="size-4" /> Filtros
-                  {activeFilterCount > 0 && (
-                    <span className="filter-count">{activeFilterCount}</span>
+                <div className="hero-actions flex flex-wrap gap-3">
+                  {isAdmin && (
+                    <>
+                      <input
+                        ref={fileInput}
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        className="sr-only"
+                        {...({
+                          webkitdirectory: "",
+                          directory: "",
+                        } as React.InputHTMLAttributes<HTMLInputElement>)}
+                        onChange={(event) => void handleFolder(event.target.files)}
+                      />
+                      <Button
+                        variant="outline"
+                        disabled={uploading}
+                        onClick={() => fileInput.current?.click()}
+                        className="h-11 rounded-lg border-[#b7c9e2] bg-white px-5 font-semibold text-[#0b2b5d]"
+                      >
+                        <FolderOpen /> {uploading ? "Sincronizando…" : "Seleccionar carpeta"}
+                      </Button>
+                    </>
                   )}
-                </Button>
-                {canReview && (
+                  {canReview && (
+                    <Button
+                      onClick={() => void exportExcel()}
+                      disabled={exporting || !filtered.length}
+                      className="h-11 rounded-lg bg-[#1f5fbf] px-5 font-semibold text-white shadow-[0_8px_20px_rgba(31,95,191,.18)] hover:bg-[#174f9f]"
+                    >
+                      <Download /> {exporting ? "Preparando enlaces…" : "Descargar Excel"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {uploading && (
+                <div className="upload-progress">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 font-semibold text-[#0b2b5d]">
+                      <Upload className="size-4 text-[#1f5fbf]" /> Sincronizando carpeta
+                    </span>
+                    <span>
+                      {uploadProgress.total
+                        ? `${uploadProgress.done} / ${uploadProgress.total}`
+                        : "Leyendo imágenes…"}
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dce7f5]">
+                    <div
+                      className="h-full rounded-full bg-[#1f5fbf] transition-all"
+                      style={{
+                        width: uploadProgress.total
+                          ? `${(uploadProgress.done / uploadProgress.total) * 100}%`
+                          : "12%",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Metric label="Imágenes" value={counts.total} color="navy" />
+                <Metric label="Sin observaciones" value={counts.correct} color="green" />
+                <Metric label="Sin revisar" value={counts.pending} color="amber" />
+                <Metric label="Con hallazgos" value={counts.issues} color="pink" />
+              </div>
+              <div className="filter-shell">
+                <div className="filter-toolbar">
+                  <SearchField
+                    label="Búsqueda rápida"
+                    value={searchQuery}
+                    placeholder="Código, archivo, producto, marca o estudio"
+                    onChange={setSearchQuery}
+                  />
                   <Button
                     variant="outline"
-                    onClick={() => setConfirmAll(true)}
-                    disabled={!filtered.length}
-                    className="h-12 rounded-lg border-[#b7c9e2] bg-white px-4 font-semibold text-[#0b2b5d]"
+                    onClick={() => setFiltersOpen((current) => !current)}
+                    className={`filter-toggle h-12 rounded-lg px-4 ${filtersOpen ? "is-open" : ""}`}
                   >
-                    <CheckCircle2 /> Marcar visibles correctas
+                    <SlidersHorizontal className="size-4" /> Filtros
+                    {activeFilterCount > 0 && (
+                      <span className="filter-count">{activeFilterCount}</span>
+                    )}
                   </Button>
-                )}
-              </div>
-              {filtersOpen && (
-                <div className="filter-drawer">
-                  <div className="filter-drawer-heading">
-                    <div>
-                      <p>Filtros avanzados</p>
-                      <span>Afina los resultados sin saturar la pantalla.</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      onClick={clearFilters}
-                      disabled={!activeFilterCount && !searchQuery}
-                      className="h-9 text-[#1f5fbf]"
-                    >
-                      <RotateCcw className="size-4" /> Limpiar
-                    </Button>
-                  </div>
-                  <div className="filter-grid">
-                    <FilterSelect
-                      label="País"
-                      value={country}
-                      options={countries}
-                      onChange={setCountry}
-                    />
-                    <FilterSelect
-                      label="Estudio"
-                      value={study}
-                      options={studies}
-                      onChange={setStudy}
-                    />
-                    <FilterSelect
-                      label="Marca"
-                      value={brand}
-                      options={brands}
-                      onChange={setBrand}
-                    />
-                    <FilterSelect
-                      label="Observación"
-                      value={status}
-                      options={["Todas", ...REVIEW_OPTIONS]}
-                      onChange={setStatus}
-                    />
-                  </div>
-                </div>
-              )}
-              {(searchQuery || activeFilterCount > 0) && (
-                <div className="active-filter-row">
-                  {searchQuery && (
-                    <FilterChip
-                      label={`Búsqueda: ${searchQuery}`}
-                      onRemove={() => setSearchQuery("")}
-                    />
-                  )}
-                  {country !== "Todos" && (
-                    <FilterChip label={`País: ${country}`} onRemove={() => setCountry("Todos")} />
-                  )}
-                  {study !== "Todos" && (
-                    <FilterChip label={`Estudio: ${study}`} onRemove={() => setStudy("Todos")} />
-                  )}
-                  {brand !== "Todas" && (
-                    <FilterChip label={`Marca: ${brand}`} onRemove={() => setBrand("Todas")} />
-                  )}
-                  {status !== "Todas" && (
-                    <FilterChip
-                      label={`Observación: ${status}`}
-                      onRemove={() => setStatus("Todas")}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="mb-4 mt-7 flex items-center justify-between">
-              <p className="text-sm font-medium text-[#47627a]">
-                <span className="font-semibold text-[#102f4f]">{filtered.length}</span> resultados
-              </p>
-              <p className="hidden text-sm text-muted-foreground sm:block">
-                Haz clic en una imagen para abrirla
-              </p>
-            </div>
-            {filtered.length ? (
-              <>
-                <div className="image-grid">
-                  {visibleImages.map((item, index) => (
-                    <button
-                      key={item.id}
-                      onClick={() => openImage(item)}
-                      className="image-card group text-left"
-                    >
-                      <div className={`thumb thumb-${(index % 4) + 1}`}>
-                        {item.imageUrl ? (
-                          <img
-                            src={item.imageUrl}
-                            alt={item.name}
-                            loading="lazy"
-                            className="relative z-[1] h-full w-full bg-white object-contain p-3"
-                          />
-                        ) : (
-                          <>
-                            <div className="thumb-code">{item.countryCode}</div>
-                            <LoaderCircle className="size-8 animate-spin text-white/80" />
-                            <span className="text-sm font-medium text-white/75">
-                              Cargando vista…
-                            </span>
-                          </>
-                        )}
-                        <span className="expand-chip">
-                          <Expand className="size-4" /> Abrir
-                        </span>
-                      </div>
-                      <div className="p-4">
-                        <div className="mb-3 flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-[#102f4f]">{item.name}</p>
-                            <p className="mt-1 truncate text-sm text-muted-foreground">
-                              Código: {item.imageCode}
-                            </p>
-                            {item.masterNames.length > 0 && (
-                              <p className="mt-1 truncate text-sm text-muted-foreground">
-                                Nombre: {item.masterNames.join(" · ")}
-                              </p>
-                            )}
-                            <p className="mt-1 truncate text-xs font-medium text-[#2a7775]">
-                              {item.studies.join(" · ") || NO_STUDY}
-                            </p>
-                            {item.brands.length > 0 && (
-                              <p className="mt-1 truncate text-xs text-[#6a5262]">
-                                Marca: {item.brands.join(" · ")}
-                              </p>
-                            )}
-                          </div>
-                          <ChevronRight className="mt-0.5 size-5 shrink-0 text-[#8aa0b2]" />
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`status-pill status-${statusTone(item.status)}`}>
-                            {item.status}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{item.updatedAt}</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                {visibleImages.length < filtered.length && (
-                  <div className="mt-8 flex justify-center">
+                  {canReview && (
                     <Button
                       variant="outline"
-                      onClick={() => setVisibleLimit((current) => current + 60)}
-                      className="h-11 rounded-xl border-[#9ab1c4] bg-white px-6 text-[#102f4f]"
+                      onClick={() => setConfirmAll(true)}
+                      disabled={!filtered.length}
+                      className="h-12 rounded-lg border-[#b7c9e2] bg-white px-4 font-semibold text-[#0b2b5d]"
                     >
-                      Mostrar 60 más
+                      <CheckCircle2 /> Marcar visibles correctas
                     </Button>
+                  )}
+                </div>
+                {filtersOpen && (
+                  <div className="filter-drawer">
+                    <div className="filter-drawer-heading">
+                      <div>
+                        <p>Filtros avanzados</p>
+                        <span>Afina los resultados sin saturar la pantalla.</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        onClick={clearFilters}
+                        disabled={!activeFilterCount && !searchQuery}
+                        className="h-9 text-[#1f5fbf]"
+                      >
+                        <RotateCcw className="size-4" /> Limpiar
+                      </Button>
+                    </div>
+                    <div className="filter-grid">
+                      <FilterSelect
+                        label="País"
+                        value={country}
+                        options={countries}
+                        onChange={setCountry}
+                      />
+                      <FilterSelect
+                        label="Estudio"
+                        value={study}
+                        options={studies}
+                        onChange={setStudy}
+                      />
+                      <FilterSelect
+                        label="Marca"
+                        value={brand}
+                        options={brands}
+                        onChange={setBrand}
+                      />
+                      <FilterSelect
+                        label="Observación"
+                        value={status}
+                        options={["Todas", ...REVIEW_OPTIONS]}
+                        onChange={setStatus}
+                      />
+                    </div>
                   </div>
                 )}
-              </>
-            ) : (
-              <div className="empty-state">
-                <Search className="size-9 text-[#8aa0b2]" />
-                <h2 className="mt-4 text-lg font-semibold text-[#102f4f]">
-                  No encontramos imágenes
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {images.length
-                    ? "Prueba con otro nombre o cambia los filtros."
-                    : "El administrador todavía no ha sincronizado una carpeta."}
+                {(searchQuery || activeFilterCount > 0) && (
+                  <div className="active-filter-row">
+                    {searchQuery && (
+                      <FilterChip
+                        label={`Búsqueda: ${searchQuery}`}
+                        onRemove={() => setSearchQuery("")}
+                      />
+                    )}
+                    {country !== "Todos" && (
+                      <FilterChip label={`País: ${country}`} onRemove={() => setCountry("Todos")} />
+                    )}
+                    {study !== "Todos" && (
+                      <FilterChip label={`Estudio: ${study}`} onRemove={() => setStudy("Todos")} />
+                    )}
+                    {brand !== "Todas" && (
+                      <FilterChip label={`Marca: ${brand}`} onRemove={() => setBrand("Todas")} />
+                    )}
+                    {status !== "Todas" && (
+                      <FilterChip
+                        label={`Observación: ${status}`}
+                        onRemove={() => setStatus("Todas")}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="mb-4 mt-7 flex items-center justify-between">
+                <p className="text-sm font-medium text-[#47627a]">
+                  <span className="font-semibold text-[#102f4f]">{filtered.length}</span> resultados
                 </p>
+                <p className="hidden text-sm text-muted-foreground sm:block">
+                  Haz clic en una imagen para abrirla
+                </p>
+              </div>
+              {filtered.length ? (
+                <>
+                  <div className="image-grid">
+                    {visibleImages.map((item, index) => (
+                      <button
+                        key={item.id}
+                        onClick={() => openImage(item)}
+                        className="image-card group text-left"
+                      >
+                        <div className={`thumb thumb-${(index % 4) + 1}`}>
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.name}
+                              loading="lazy"
+                              className="relative z-[1] h-full w-full bg-white object-contain p-3"
+                            />
+                          ) : (
+                            <>
+                              <div className="thumb-code">{item.countryCode}</div>
+                              <LoaderCircle className="size-8 animate-spin text-white/80" />
+                              <span className="text-sm font-medium text-white/75">
+                                Cargando vista…
+                              </span>
+                            </>
+                          )}
+                          <span className="expand-chip">
+                            <Expand className="size-4" /> Abrir
+                          </span>
+                        </div>
+                        <div className="p-4">
+                          <div className="mb-3 flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-[#102f4f]">{item.name}</p>
+                              <p className="mt-1 truncate text-sm text-muted-foreground">
+                                Código: {item.imageCode}
+                              </p>
+                              {item.masterNames.length > 0 && (
+                                <p className="mt-1 truncate text-sm text-muted-foreground">
+                                  Nombre: {item.masterNames.join(" · ")}
+                                </p>
+                              )}
+                              <p className="mt-1 truncate text-xs font-medium text-[#2a7775]">
+                                {item.studies.join(" · ") || NO_STUDY}
+                              </p>
+                              {item.brands.length > 0 && (
+                                <p className="mt-1 truncate text-xs text-[#6a5262]">
+                                  Marca: {item.brands.join(" · ")}
+                                </p>
+                              )}
+                            </div>
+                            <ChevronRight className="mt-0.5 size-5 shrink-0 text-[#8aa0b2]" />
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`status-pill status-${statusTone(item.status)}`}>
+                              {item.status}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{item.updatedAt}</span>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {visibleImages.length < filtered.length && (
+                    <div className="mt-8 flex justify-center">
+                      <Button
+                        variant="outline"
+                        onClick={() => setVisibleLimit((current) => current + 60)}
+                        className="h-11 rounded-xl border-[#9ab1c4] bg-white px-6 text-[#102f4f]"
+                      >
+                        Mostrar 60 más
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="empty-state">
+                  <Search className="size-9 text-[#8aa0b2]" />
+                  <h2 className="mt-4 text-lg font-semibold text-[#102f4f]">
+                    No encontramos imágenes
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {images.length
+                      ? "Prueba con otro nombre o cambia los filtros."
+                      : "El administrador todavía no ha sincronizado una carpeta."}
+                  </p>
+                </div>
+              )}
+            </div>
+            {isReadOnly && selected && (
+              <div
+                className="catalog-inline-detail"
+                role="dialog"
+                aria-label={`Detalle de ${selected.name}`}
+              >
+                <div className="pane-detail-toolbar">
+                  <div>
+                    <span>Imagen IRT</span>
+                    <strong>{selected.name}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    aria-label="Cerrar imagen"
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+                <div className="catalog-detail-body">
+                  <div className="catalog-detail-image">
+                    {selected.imageUrl ? (
+                      <img src={selected.imageUrl} alt={selected.name} />
+                    ) : (
+                      <FileImage className="size-16 text-white/70" />
+                    )}
+                  </div>
+                  <div className="catalog-detail-data">
+                    <div>
+                      <span>Código</span>
+                      <strong>{selected.imageCode}</strong>
+                    </div>
+                    <div>
+                      <span>País</span>
+                      <strong>{selected.country}</strong>
+                    </div>
+                    <div>
+                      <span>Producto</span>
+                      <strong>
+                        {selected.masterNames.join(" · ") || "Sin nombre identificado"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Marca</span>
+                      <strong>{selected.brands.join(" · ") || "Sin marca identificada"}</strong>
+                    </div>
+                    <div>
+                      <span>Estudio</span>
+                      <strong>{selected.studies.join(" · ") || NO_STUDY}</strong>
+                    </div>
+                    <div>
+                      <span>Estado</span>
+                      <strong>{selected.status}</strong>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -987,7 +1047,10 @@ export default function Home() {
           Validación solo consulta; Visualizador revisa; Administrador también sincroniza carpetas
         </span>
       </footer>
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+      <Dialog
+        open={!isReadOnly && Boolean(selected)}
+        onOpenChange={(open) => !open && setSelected(null)}
+      >
         <DialogContent className="max-h-[96dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-x-hidden overflow-y-auto p-0 sm:w-full sm:max-w-4xl">
           {selected && (
             <div className="grid md:min-h-[520px] md:grid-cols-[1.25fr_.75fr]">
