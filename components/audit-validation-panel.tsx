@@ -10,6 +10,8 @@ import {
   RefreshCw,
   Search,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +60,7 @@ export function AuditValidationPanel() {
   const [selectedSession, setSelectedSession] = useState<AuditSession | null>(null);
   const [images, setImages] = useState<AuditImage[]>([]);
   const [selectedImage, setSelectedImage] = useState<AuditImage | null>(null);
+  const [imageZoom, setImageZoom] = useState(1);
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("Todos");
   const [status, setStatus] = useState("Todos");
@@ -283,7 +286,10 @@ export function AuditValidationPanel() {
                     <button
                       type="button"
                       key={image.imageKey}
-                      onClick={() => setSelectedImage(image)}
+                      onClick={() => {
+                        setSelectedImage(image);
+                        setImageZoom(1);
+                      }}
                       className="audit-image-card"
                     >
                       <img
@@ -319,20 +325,63 @@ export function AuditValidationPanel() {
               <span>Evidencia seleccionada</span>
               <strong>Auditoría {selectedSession.auditId}</strong>
             </div>
-            <button
-              type="button"
-              onClick={() => setSelectedImage(null)}
-              aria-label="Cerrar evidencia"
-            >
-              <X className="size-5" />
-            </button>
+            <div className="pane-detail-actions">
+              <div className="audit-zoom-controls" aria-label="Zoom de la imagen">
+                <button
+                  type="button"
+                  onClick={() => setImageZoom((value) => Math.max(1, value - 0.25))}
+                  disabled={imageZoom <= 1}
+                  aria-label="Alejar imagen"
+                >
+                  <ZoomOut className="size-4" />
+                </button>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="0.25"
+                  value={imageZoom}
+                  onChange={(event) => setImageZoom(Number(event.target.value))}
+                  aria-label="Nivel de zoom"
+                />
+                <button
+                  type="button"
+                  onClick={() => setImageZoom((value) => Math.min(5, value + 0.25))}
+                  disabled={imageZoom >= 5}
+                  aria-label="Acercar imagen"
+                >
+                  <ZoomIn className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  className="audit-zoom-value"
+                  onClick={() => setImageZoom(1)}
+                  aria-label="Restablecer zoom al 100 por ciento"
+                  title="Restablecer zoom"
+                >
+                  {Math.round(imageZoom * 100)}%
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedImage(null)}
+                aria-label="Cerrar evidencia"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
           </div>
           <div className="audit-detail-layout">
-            <div className="audit-detail-image">
-              <img
-                src={selectedImage.imageUrl}
-                alt={`Evidencia de la auditoría ${selectedImage.auditId}`}
-              />
+            <div className="audit-detail-image audit-zoom-viewer">
+              <div
+                className="audit-zoom-canvas"
+                style={{ width: `${imageZoom * 100}%`, height: `${imageZoom * 100}%` }}
+              >
+                <img
+                  src={selectedImage.imageUrl}
+                  alt={`Evidencia de la auditoría ${selectedImage.auditId}`}
+                />
+              </div>
             </div>
             <div className="audit-detail-data">
               <p>Información asociada a la evidencia seleccionada.</p>
