@@ -1043,9 +1043,6 @@ export default function Home() {
           <ShieldCheck className="size-4 text-[#168a85]" /> Acceso protegido por usuario y
           contraseña
         </span>
-        <span>
-          Validación solo consulta; Visualizador revisa; Administrador también sincroniza carpetas
-        </span>
       </footer>
       <Dialog
         open={!isReadOnly && Boolean(selected)}
