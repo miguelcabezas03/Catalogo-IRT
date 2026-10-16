@@ -1,20 +1,56 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ClipboardList, FileImage, Images, LoaderCircle, RefreshCw, Search, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { type AuditImage, type AuditSession, loadAuditImages, loadAuditSessions } from '@/lib/catalog';
+import { useEffect, useMemo, useState } from "react";
+import {
+  ChevronRight,
+  ClipboardList,
+  FileImage,
+  Images,
+  LoaderCircle,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  type AuditImage,
+  type AuditSession,
+  loadAuditImages,
+  loadAuditSessions,
+} from "@/lib/catalog";
 
 function labelForField(value: string) {
-  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function displayValue(value: unknown) {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function normalizeFieldName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/gi, "")
+    .toUpperCase();
+}
+
+function auditValue(data: Record<string, unknown>, candidates: string[]) {
+  const candidateSet = new Set(candidates.map(normalizeFieldName));
+  const entry = Object.entries(data).find(([key]) => candidateSet.has(normalizeFieldName(key)));
+  if (!entry || entry[1] === null || entry[1] === undefined || entry[1] === "") return "";
+  return displayValue(entry[1]).trim();
+}
+
+function auditCountry(session: AuditSession) {
+  return auditValue(session.data, ["PAIS", "COUNTRY"]);
+}
+
+function auditStatus(session: AuditSession) {
+  return auditValue(session.data, ["ESTADO", "ESTATUS", "STATUS", "SUBSTATUS"]);
 }
 
 export function AuditValidationPanel() {
@@ -22,31 +58,57 @@ export function AuditValidationPanel() {
   const [selectedSession, setSelectedSession] = useState<AuditSession | null>(null);
   const [images, setImages] = useState<AuditImage[]>([]);
   const [selectedImage, setSelectedImage] = useState<AuditImage | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [country, setCountry] = useState("Todos");
+  const [status, setStatus] = useState("Todos");
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingImages, setLoadingImages] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+
+  const countries = useMemo(
+    () => [
+      "Todos",
+      ...Array.from(new Set(sessions.map(auditCountry).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "es"),
+      ),
+    ],
+    [sessions],
+  );
+
+  const statuses = useMemo(
+    () => [
+      "Todos",
+      ...Array.from(new Set(sessions.map(auditStatus).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "es"),
+      ),
+    ],
+    [sessions],
+  );
 
   const filteredSessions = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return sessions;
-    return sessions.filter((session) => session.auditId.toLowerCase().includes(term));
-  }, [search, sessions]);
+    return sessions.filter((session) => {
+      const matchesSearch = !term || session.auditId.toLowerCase().includes(term);
+      const matchesCountry = country === "Todos" || auditCountry(session) === country;
+      const matchesStatus = status === "Todos" || auditStatus(session) === status;
+      return matchesSearch && matchesCountry && matchesStatus;
+    });
+  }, [country, search, sessions, status]);
 
   const auditFields = useMemo(() => {
     if (!selectedSession) return [];
     return Object.entries(selectedSession.data)
-      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+      .filter(([, value]) => value !== null && value !== undefined && value !== "")
       .sort(([left], [right]) => {
-        if (left === 'ID_de_audito') return -1;
-        if (right === 'ID_de_audito') return 1;
-        return left.localeCompare(right, 'es');
+        if (left === "ID_de_audito") return -1;
+        if (right === "ID_de_audito") return 1;
+        return left.localeCompare(right, "es");
       });
   }, [selectedSession]);
 
   async function refreshSessions() {
     setLoadingSessions(true);
-    setError('');
+    setError("");
     try {
       const rows = await loadAuditSessions();
       setSessions(rows);
@@ -54,7 +116,9 @@ export function AuditValidationPanel() {
         setSelectedSession(rows.find((row) => row.auditId === selectedSession.auditId) ?? null);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar las auditorías.');
+      setError(
+        loadError instanceof Error ? loadError.message : "No se pudieron cargar las auditorías.",
+      );
     } finally {
       setLoadingSessions(false);
     }
@@ -62,30 +126,46 @@ export function AuditValidationPanel() {
 
   async function openAudit(session: AuditSession) {
     setSelectedSession(session);
+    setSelectedImage(null);
     setImages([]);
     setLoadingImages(true);
-    setError('');
+    setError("");
     try {
       setImages(await loadAuditImages(session.auditId));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar las imágenes de la auditoría.');
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "No se pudieron cargar las imágenes de la auditoría.",
+      );
     } finally {
       setLoadingImages(false);
     }
   }
 
-  useEffect(() => { void refreshSessions(); }, []);
+  useEffect(() => {
+    void refreshSessions();
+  }, []);
 
   return (
     <section className="validation-pane audit-pane" aria-label="Validación de auditorías">
       <div className="audit-pane-header">
         <div>
-          <p className="audit-eyebrow"><ClipboardList className="size-4" /> Validación de campo</p>
+          <p className="audit-eyebrow">
+            <ClipboardList className="size-4" /> Validación de campo
+          </p>
           <h2>Auditorías e imágenes</h2>
           <p>Selecciona un código para consultar sus evidencias y abrir la información completa.</p>
         </div>
-        <Button variant="outline" size="icon" onClick={() => void refreshSessions()} disabled={loadingSessions} aria-label="Actualizar auditorías" className="shrink-0 bg-white">
-          <RefreshCw className={`size-4 ${loadingSessions ? 'animate-spin' : ''}`} />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => void refreshSessions()}
+          disabled={loadingSessions}
+          aria-label="Actualizar auditorías"
+          className="shrink-0 bg-white"
+        >
+          <RefreshCw className={`size-4 ${loadingSessions ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
@@ -93,48 +173,181 @@ export function AuditValidationPanel() {
         <aside className="audit-code-panel">
           <label className="audit-search">
             <Search className="size-4" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código" />
-            {search && <button type="button" onClick={() => setSearch('')} aria-label="Limpiar búsqueda"><X className="size-4" /></button>}
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar código"
+            />
+            {search && (
+              <button type="button" onClick={() => setSearch("")} aria-label="Limpiar búsqueda">
+                <X className="size-4" />
+              </button>
+            )}
           </label>
-          <div className="audit-code-summary"><strong>{filteredSessions.length}</strong> auditorías</div>
+          <div className="audit-filters" aria-label="Filtros de auditorías">
+            <label>
+              <span>País</span>
+              <select value={country} onChange={(event) => setCountry(event.target.value)}>
+                {countries.map((value) => (
+                  <option key={value} value={value}>
+                    {value === "Todos" ? "Todos los países" : value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Estatus</span>
+              <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                {statuses.map((value) => (
+                  <option key={value} value={value}>
+                    {value === "Todos" ? "Todos los estatus" : value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(country !== "Todos" || status !== "Todos") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCountry("Todos");
+                  setStatus("Todos");
+                }}
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+          <div className="audit-code-summary">
+            <strong>{filteredSessions.length}</strong> auditorías
+          </div>
           <div className="audit-code-list">
-            {loadingSessions ? <div className="audit-loading"><LoaderCircle className="size-5 animate-spin" /> Cargando códigos…</div>
-              : filteredSessions.length ? filteredSessions.map((session) => (
-                <button type="button" key={session.auditId} onClick={() => void openAudit(session)} className={`audit-code-item ${selectedSession?.auditId === session.auditId ? 'is-selected' : ''}`}>
-                  <span><strong>{session.auditId}</strong><small>{session.imageCount} {session.imageCount === 1 ? 'imagen' : 'imágenes'}</small></span>
+            {loadingSessions ? (
+              <div className="audit-loading">
+                <LoaderCircle className="size-5 animate-spin" /> Cargando códigos…
+              </div>
+            ) : filteredSessions.length ? (
+              filteredSessions.map((session) => (
+                <button
+                  type="button"
+                  key={session.auditId}
+                  onClick={() => void openAudit(session)}
+                  className={`audit-code-item ${selectedSession?.auditId === session.auditId ? "is-selected" : ""}`}
+                >
+                  <span>
+                    <strong>{session.auditId}</strong>
+                    <small>
+                      {session.imageCount} {session.imageCount === 1 ? "imagen" : "imágenes"}
+                    </small>
+                    {(auditCountry(session) || auditStatus(session)) && (
+                      <small>
+                        {[auditCountry(session), auditStatus(session)].filter(Boolean).join(" · ")}
+                      </small>
+                    )}
+                  </span>
                   <ChevronRight className="size-4" />
                 </button>
-              )) : <div className="audit-empty-small">{sessions.length ? 'No hay coincidencias.' : 'Aún no hay auditorías sincronizadas.'}</div>}
+              ))
+            ) : (
+              <div className="audit-empty-small">
+                {sessions.length ? "No hay coincidencias." : "Aún no hay auditorías sincronizadas."}
+              </div>
+            )}
           </div>
         </aside>
 
         <div className="audit-evidence-panel">
           {error && <div className="audit-error">{error}</div>}
-          {!selectedSession ? <div className="audit-placeholder"><Images className="size-10" /><h3>Elige una auditoría</h3><p>Aquí aparecerán las imágenes asociadas mediante el código de auditoría.</p></div>
-            : <>
-              <div className="audit-selection-heading"><div><span>Código seleccionado</span><h3>{selectedSession.auditId}</h3></div><span>{selectedSession.imageCount} evidencias</span></div>
-              {loadingImages ? <div className="audit-placeholder"><LoaderCircle className="size-8 animate-spin" /><p>Cargando imágenes…</p></div>
-                : images.length ? <div className="audit-image-grid">{images.map((image, index) => (
-                  <button type="button" key={image.imageKey} onClick={() => setSelectedImage(image)} className="audit-image-card">
-                    <img src={image.imageUrl} alt={`Evidencia ${index + 1} de la auditoría ${image.auditId}`} loading="lazy" />
-                    <span><FileImage className="size-4" /> Evidencia {index + 1}</span>
-                  </button>
-                ))}</div> : <div className="audit-placeholder"><FileImage className="size-9" /><p>Este código no tiene imágenes disponibles.</p></div>}
-            </>}
+          {!selectedSession ? (
+            <div className="audit-placeholder">
+              <Images className="size-10" />
+              <h3>Elige una auditoría</h3>
+              <p>Aquí aparecerán las imágenes asociadas mediante el código de auditoría.</p>
+            </div>
+          ) : (
+            <>
+              <div className="audit-selection-heading">
+                <div>
+                  <span>Código seleccionado</span>
+                  <h3>{selectedSession.auditId}</h3>
+                </div>
+                <span>{selectedSession.imageCount} evidencias</span>
+              </div>
+              {loadingImages ? (
+                <div className="audit-placeholder">
+                  <LoaderCircle className="size-8 animate-spin" />
+                  <p>Cargando imágenes…</p>
+                </div>
+              ) : images.length ? (
+                <div className="audit-image-grid">
+                  {images.map((image, index) => (
+                    <button
+                      type="button"
+                      key={image.imageKey}
+                      onClick={() => setSelectedImage(image)}
+                      className="audit-image-card"
+                    >
+                      <img
+                        src={image.imageUrl}
+                        alt={`Evidencia ${index + 1} de la auditoría ${image.auditId}`}
+                        loading="lazy"
+                      />
+                      <span>
+                        <FileImage className="size-4" /> Evidencia {index + 1}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="audit-placeholder">
+                  <FileImage className="size-9" />
+                  <p>Este código no tiene imágenes disponibles.</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      <Dialog open={Boolean(selectedImage)} onOpenChange={(open) => !open && setSelectedImage(null)}>
-        <DialogContent className="max-h-[96dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-6xl">
-          {selectedImage && selectedSession && <div className="audit-detail-layout">
-            <div className="audit-detail-image"><img src={selectedImage.imageUrl} alt={`Evidencia de la auditoría ${selectedImage.auditId}`} /></div>
-            <div className="audit-detail-data">
-              <DialogHeader><DialogTitle>Auditoría {selectedSession.auditId}</DialogTitle><DialogDescription>Información asociada a la evidencia seleccionada.</DialogDescription></DialogHeader>
-              <dl>{auditFields.map(([field, value]) => <div key={field}><dt>{labelForField(field)}</dt><dd>{displayValue(value)}</dd></div>)}</dl>
+      {selectedImage && selectedSession && (
+        <div
+          className="audit-inline-detail"
+          role="dialog"
+          aria-label={`Evidencia de la auditoría ${selectedSession.auditId}`}
+        >
+          <div className="pane-detail-toolbar">
+            <div>
+              <span>Evidencia seleccionada</span>
+              <strong>Auditoría {selectedSession.auditId}</strong>
             </div>
-          </div>}
-        </DialogContent>
-      </Dialog>
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              aria-label="Cerrar evidencia"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+          <div className="audit-detail-layout">
+            <div className="audit-detail-image">
+              <img
+                src={selectedImage.imageUrl}
+                alt={`Evidencia de la auditoría ${selectedImage.auditId}`}
+              />
+            </div>
+            <div className="audit-detail-data">
+              <p>Información asociada a la evidencia seleccionada.</p>
+              <dl>
+                {auditFields.map(([field, value]) => (
+                  <div key={field}>
+                    <dt>{labelForField(field)}</dt>
+                    <dd>{displayValue(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
