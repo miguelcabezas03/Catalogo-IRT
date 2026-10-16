@@ -31,6 +31,19 @@ export type CatalogImage = {
   masterNames: string[];
 };
 
+export type AuditSession = {
+  auditId: string;
+  imageCount: number;
+  data: Record<string, unknown>;
+  updatedAt: string;
+};
+
+export type AuditImage = {
+  imageKey: string;
+  auditId: string;
+  imageUrl: string;
+};
+
 export const NO_STUDY = 'Sin estudio identificado';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -194,6 +207,52 @@ export async function loadCatalog(): Promise<CatalogImage[]> {
     const code = normalizeImageCode(String(row.file_name));
     return rowToImage(row, studyMap.get(code));
   });
+}
+
+export async function loadAuditSessions(): Promise<AuditSession[]> {
+  if (!supabase) return [];
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('audit_validation_sessions')
+      .select('audit_id,image_count,audit_data,updated_at')
+      .order('audit_id')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows.map((row) => ({
+    auditId: String(row.audit_id),
+    imageCount: Number(row.image_count ?? 0),
+    data: (row.audit_data && typeof row.audit_data === 'object' ? row.audit_data : {}) as Record<string, unknown>,
+    updatedAt: new Date(String(row.updated_at)).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }),
+  }));
+}
+
+export async function loadAuditImages(auditId: string): Promise<AuditImage[]> {
+  if (!supabase || !auditId) return [];
+  const rows: AuditImage[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('audit_validation_images')
+      .select('image_key,audit_id,image_url')
+      .eq('audit_id', auditId)
+      .order('image_key')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = ((data ?? []) as { image_key: unknown; audit_id: unknown; image_url: unknown }[]).map((row) => ({
+      imageKey: String(row.image_key),
+      auditId: String(row.audit_id),
+      imageUrl: String(row.image_url),
+    }));
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
 }
 
 export async function hydrateImageUrls(images: CatalogImage[], expiresIn = 86400): Promise<CatalogImage[]> {
