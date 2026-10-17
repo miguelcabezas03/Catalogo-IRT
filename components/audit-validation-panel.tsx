@@ -55,6 +55,33 @@ function auditStatus(session: AuditSession) {
   return auditValue(session.data, ["ESTADO", "ESTATUS", "STATUS", "SUBSTATUS"]);
 }
 
+function auditDate(session: AuditSession) {
+  const value = auditValue(session.data, ["Fecha_del_audito"]);
+  if (!value) return "";
+
+  const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`;
+
+  const dayFirstDate = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+  if (dayFirstDate) {
+    return `${dayFirstDate[3]}-${dayFirstDate[2].padStart(2, "0")}-${dayFirstDate[1].padStart(2, "0")}`;
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return "";
+  return [
+    parsedDate.getUTCFullYear(),
+    String(parsedDate.getUTCMonth() + 1).padStart(2, "0"),
+    String(parsedDate.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function formatAuditDate(value: string) {
+  if (!value) return "";
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 export function AuditValidationPanel() {
   const [sessions, setSessions] = useState<AuditSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<AuditSession | null>(null);
@@ -64,6 +91,7 @@ export function AuditValidationPanel() {
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("Todos");
   const [status, setStatus] = useState("Todos");
+  const [auditDateFilter, setAuditDateFilter] = useState("");
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingImages, setLoadingImages] = useState(false);
   const [error, setError] = useState("");
@@ -94,9 +122,10 @@ export function AuditValidationPanel() {
       const matchesSearch = !term || session.auditId.toLowerCase().includes(term);
       const matchesCountry = country === "Todos" || auditCountry(session) === country;
       const matchesStatus = status === "Todos" || auditStatus(session) === status;
-      return matchesSearch && matchesCountry && matchesStatus;
+      const matchesDate = !auditDateFilter || auditDate(session) === auditDateFilter;
+      return matchesSearch && matchesCountry && matchesStatus && matchesDate;
     });
-  }, [country, search, sessions, status]);
+  }, [auditDateFilter, country, search, sessions, status]);
 
   const auditFields = useMemo(() => {
     if (!selectedSession) return [];
@@ -208,12 +237,23 @@ export function AuditValidationPanel() {
                 ))}
               </select>
             </label>
-            {(country !== "Todos" || status !== "Todos") && (
+            <label>
+              <span>Fecha de auditoría</span>
+              <input
+                type="date"
+                value={auditDateFilter}
+                onChange={(event) => setAuditDateFilter(event.target.value)}
+                aria-label="Fecha de la auditoría"
+                className="h-[2.35rem] w-full rounded-[0.55rem] border border-[#cbd9ea] bg-white px-[0.65rem] text-xs text-[#29475f]"
+              />
+            </label>
+            {(country !== "Todos" || status !== "Todos" || auditDateFilter) && (
               <button
                 type="button"
                 onClick={() => {
                   setCountry("Todos");
                   setStatus("Todos");
+                  setAuditDateFilter("");
                 }}
               >
                 Limpiar filtros
@@ -241,9 +281,15 @@ export function AuditValidationPanel() {
                     <small>
                       {session.imageCount} {session.imageCount === 1 ? "imagen" : "imágenes"}
                     </small>
-                    {(auditCountry(session) || auditStatus(session)) && (
+                    {(auditCountry(session) || auditStatus(session) || auditDate(session)) && (
                       <small>
-                        {[auditCountry(session), auditStatus(session)].filter(Boolean).join(" · ")}
+                        {[
+                          auditCountry(session),
+                          auditStatus(session),
+                          formatAuditDate(auditDate(session)),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </small>
                     )}
                   </span>
