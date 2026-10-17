@@ -33,10 +33,14 @@ if missing_images:
 if missing_audits:
     raise ValueError(f"Faltan columnas en {AUDIT_TABLE}: {sorted(missing_audits)}")
 
-# La vista del validador usa únicamente el mes calendario actual. El filtro se
-# actualiza solo al comenzar cada mes y evita publicar millones de registros.
+# La vista del validador usa únicamente el mes calendario actual: desde el
+# primer día (incluido) hasta el primer día del mes siguiente (excluido).
 month_start = F.trunc(F.current_date(), "month")
-audits_source = audits_source.filter(F.to_date("Fecha_del_audito") >= month_start)
+next_month_start = F.add_months(month_start, 1)
+audit_date = F.to_date("Fecha_del_audito")
+audits_source = audits_source.filter(
+    (audit_date >= month_start) & (audit_date < next_month_start)
+)
 
 audit_struct = F.struct(*[F.col(column).alias(column) for column in audits_source.columns])
 def normalized_id(column):
