@@ -20,6 +20,14 @@ create table if not exists public.audit_validation_images (
 create index if not exists audit_validation_images_audit_id_idx
   on public.audit_validation_images (audit_id);
 
+-- La sincronización elimina por sync_id. Sin estos índices PostgreSQL debe
+-- recorrer las tablas completas en cada lote y puede agotar el timeout.
+create index if not exists audit_validation_sessions_sync_id_idx
+  on public.audit_validation_sessions (sync_id);
+
+create index if not exists audit_validation_images_sync_id_idx
+  on public.audit_validation_images (sync_id);
+
 alter table public.audit_validation_sessions enable row level security;
 alter table public.audit_validation_images enable row level security;
 
@@ -79,52 +87,52 @@ grant select on public.audit_validation_images to authenticated;
 grant insert, update, delete on public.audit_validation_sessions to authenticated;
 grant insert, update, delete on public.audit_validation_images to authenticated;
 
--- Limpia sincronizaciones anteriores en lotes para evitar timeouts de la API.
-create or replace function public.cleanup_audit_validation(p_sync_id uuid)
-returns void
+-- Limpia un solo lote por llamada. Databricks repite la llamada hasta que
+-- ambos contadores lleguen a cero, de modo que cada transacción permanezca
+-- por debajo del timeout de Supabase/PostgREST. Se usa un nombre nuevo para
+-- conservar la función anterior hasta comprobar el flujo actualizado.
+create or replace function public.cleanup_audit_validation_batch(p_sync_id uuid)
+returns table(images_deleted integer, sessions_deleted integer)
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  affected integer;
+  deleted_images integer := 0;
+  deleted_sessions integer := 0;
 begin
   if coalesce(auth.jwt() ->> 'email', '') <> 'databricks-audit-sync@irt.local' then
     raise exception 'Usuario no autorizado para limpiar auditorías';
   end if;
 
-  loop
-    with doomed as (
-      select image_key
-      from public.audit_validation_images
-      where sync_id <> p_sync_id
-      limit 10000
-    )
-    delete from public.audit_validation_images target
-    using doomed
-    where target.image_key = doomed.image_key;
-    get diagnostics affected = row_count;
-    exit when affected = 0;
-  end loop;
+  with doomed as (
+    select image_key
+    from public.audit_validation_images
+    where sync_id <> p_sync_id
+    limit 500
+  )
+  delete from public.audit_validation_images target
+  using doomed
+  where target.image_key = doomed.image_key;
+  get diagnostics deleted_images = row_count;
 
-  loop
-    with doomed as (
-      select audit_id
-      from public.audit_validation_sessions
-      where sync_id <> p_sync_id
-      limit 5000
-    )
-    delete from public.audit_validation_sessions target
-    using doomed
-    where target.audit_id = doomed.audit_id;
-    get diagnostics affected = row_count;
-    exit when affected = 0;
-  end loop;
+  with doomed as (
+    select audit_id
+    from public.audit_validation_sessions
+    where sync_id <> p_sync_id
+    limit 100
+  )
+  delete from public.audit_validation_sessions target
+  using doomed
+  where target.audit_id = doomed.audit_id;
+  get diagnostics deleted_sessions = row_count;
+
+  return query select deleted_images, deleted_sessions;
 end;
 $$;
 
-revoke all on function public.cleanup_audit_validation(uuid) from public;
-grant execute on function public.cleanup_audit_validation(uuid) to authenticated;
+revoke all on function public.cleanup_audit_validation_batch(uuid) from public;
+grant execute on function public.cleanup_audit_validation_batch(uuid) to authenticated;
 
 comment on table public.audit_validation_sessions is
   'Auditorías sincronizadas desde storeview.slv_sv_ceres_ag_export.';
