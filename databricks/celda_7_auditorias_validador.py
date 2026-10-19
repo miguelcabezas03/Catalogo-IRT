@@ -162,36 +162,50 @@ def image_payload(row):
 upsert_iterator("audit_validation_sessions", sessions_df.toLocalIterator(), "audit_id", session_payload, session_count)
 upsert_iterator("audit_validation_images", images_df.toLocalIterator(), "image_key", image_payload, image_count)
 
-# Cada llamada SQL elimina un solo lote y confirma su propia transacción.
-# Repetir llamadas pequeñas evita el timeout que causaba el error HTTP 500.
-deleted_images_total = 0
-deleted_sessions_total = 0
-while True:
-    cleanup = requests.post(
-        f"{SUPABASE_URL}/rest/v1/rpc/cleanup_audit_validation_batch",
-        headers={**headers, "Prefer": "return=representation"},
-        json={"p_sync_id": sync_id},
-        timeout=120,
-    )
-    if not cleanup.ok:
-        raise RuntimeError(
-            "Falló la limpieza de Supabase "
-            f"(HTTP {cleanup.status_code}): {cleanup.text[:1000]}"
+# La limpieza se realiza por claves explícitas y en lotes pequeños. Esto evita
+# que una sola función SQL mantenga una transacción abierta hasta alcanzar el
+# statement timeout de Supabase.
+def delete_stale_rows(table, key_column, batch_size):
+    deleted_total = 0
+    while True:
+        pending = requests.get(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            headers=headers,
+            params={
+                "select": key_column,
+                "sync_id": f"neq.{sync_id}",
+                "limit": str(batch_size),
+            },
+            timeout=120,
         )
+        pending.raise_for_status()
+        values = [row[key_column] for row in pending.json()]
+        if not values:
+            return deleted_total
 
-    cleanup_rows = cleanup.json()
-    cleanup_result = cleanup_rows[0] if cleanup_rows else {}
-    deleted_images = int(cleanup_result.get("images_deleted", 0))
-    deleted_sessions = int(cleanup_result.get("sessions_deleted", 0))
-    deleted_images_total += deleted_images
-    deleted_sessions_total += deleted_sessions
-    print(
-        "Limpieza anterior: "
-        f"{deleted_images_total:,} imágenes y "
-        f"{deleted_sessions_total:,} auditorías eliminadas"
-    )
-    if deleted_images == 0 and deleted_sessions == 0:
-        break
+        encoded_values = ",".join(json.dumps(value) for value in values)
+        deleted = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            headers=headers,
+            params={
+                key_column: f"in.({encoded_values})",
+                "sync_id": f"neq.{sync_id}",
+            },
+            timeout=120,
+        )
+        deleted.raise_for_status()
+        deleted_total += len(values)
+        print(f"Limpieza {table}: {deleted_total:,} filas anteriores eliminadas")
+
+# Primero se eliminan las imágenes para respetar la relación foránea; luego,
+# las sesiones antiguas ya quedan sin hijos y se pueden borrar sin cascadas.
+deleted_images_total = delete_stale_rows("audit_validation_images", "image_key", 100)
+deleted_sessions_total = delete_stale_rows("audit_validation_sessions", "audit_id", 50)
+print(
+    "Limpieza anterior terminada: "
+    f"{deleted_images_total:,} imágenes y "
+    f"{deleted_sessions_total:,} auditorías eliminadas"
+)
 
 joined.unpersist()
 print(f"Sincronización terminada. Código: {sync_id}")
