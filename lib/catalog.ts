@@ -44,6 +44,15 @@ export type AuditImage = {
   imageUrl: string;
 };
 
+export type DatabricksRunStatus = {
+  runId: number;
+  runPageUrl: string;
+  lifeCycleState: string;
+  resultState: string | null;
+  stateMessage: string;
+  alreadyRunning?: boolean;
+};
+
 export const NO_STUDY = 'Sin estudio identificado';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -198,6 +207,44 @@ export async function getCurrentUser(): Promise<{ user: User; role: UserRole } |
   const { data: profile, error } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
   if (error) throw error;
   return { user: data.user, role: profile.role as UserRole };
+}
+
+async function edgeFunctionError(error: unknown, fallback: string) {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      const payload = await context.clone().json().catch(() => null);
+      const message = payload && typeof payload === 'object' && 'error' in payload
+        ? String((payload as { error?: unknown }).error ?? '').trim()
+        : '';
+      if (message) return message;
+    }
+  }
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim();
+    if (message) return message;
+  }
+  return fallback;
+}
+
+export async function triggerDatabricksRefresh(): Promise<DatabricksRunStatus> {
+  if (!supabase) throw new Error('Supabase todavía no está configurado.');
+  const { data, error } = await supabase.functions.invoke('trigger-databricks-job', {
+    body: { action: 'run' },
+  });
+  if (error) throw new Error(await edgeFunctionError(error, 'No se pudo iniciar Databricks.'));
+  if (!data?.runId) throw new Error(String(data?.error ?? 'Databricks no devolvió una ejecución.'));
+  return data as DatabricksRunStatus;
+}
+
+export async function getDatabricksRefreshStatus(runId: number): Promise<DatabricksRunStatus> {
+  if (!supabase) throw new Error('Supabase todavía no está configurado.');
+  const { data, error } = await supabase.functions.invoke('trigger-databricks-job', {
+    body: { action: 'status', runId },
+  });
+  if (error) throw new Error(await edgeFunctionError(error, 'No se pudo consultar Databricks.'));
+  if (!data?.runId) throw new Error(String(data?.error ?? 'Databricks no devolvió el estado.'));
+  return data as DatabricksRunStatus;
 }
 
 export async function loadCatalog(): Promise<CatalogImage[]> {
