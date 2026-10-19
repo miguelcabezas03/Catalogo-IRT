@@ -162,40 +162,75 @@ def image_payload(row):
 upsert_iterator("audit_validation_sessions", sessions_df.toLocalIterator(), "audit_id", session_payload, session_count)
 upsert_iterator("audit_validation_images", images_df.toLocalIterator(), "image_key", image_payload, image_count)
 
-# La limpieza se realiza por claves explícitas y en lotes pequeños. Esto evita
-# que una sola función SQL mantenga una transacción abierta hasta alcanzar el
-# statement timeout de Supabase.
+# Evitar filtros `sync_id <> actual`: PostgreSQL debe revisar demasiadas filas
+# y PostgREST termina cancelando la consulta. Los extremos del índice permiten
+# descubrir una versión anterior usando igualdad; después se elimina esa
+# versión por claves explícitas y en lotes pequeños.
+def checked_json(response, operation):
+    if not response.ok:
+        raise RuntimeError(
+            f"{operation} falló (HTTP {response.status_code}): "
+            f"{response.text[:1000]}"
+        )
+    return response.json()
+
+def find_stale_sync_id(table):
+    for direction in ("asc", "desc"):
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            headers=headers,
+            params={
+                "select": "sync_id",
+                "order": f"sync_id.{direction}",
+                "limit": "1",
+            },
+            timeout=120,
+        )
+        rows = checked_json(response, f"Consulta de versiones en {table}")
+        if rows and rows[0]["sync_id"] != sync_id:
+            return rows[0]["sync_id"]
+    return None
+
 def delete_stale_rows(table, key_column, batch_size):
     deleted_total = 0
     while True:
-        pending = requests.get(
-            f"{SUPABASE_URL}/rest/v1/{table}",
-            headers=headers,
-            params={
-                "select": key_column,
-                "sync_id": f"neq.{sync_id}",
-                "limit": str(batch_size),
-            },
-            timeout=120,
-        )
-        pending.raise_for_status()
-        values = [row[key_column] for row in pending.json()]
-        if not values:
+        stale_sync_id = find_stale_sync_id(table)
+        if stale_sync_id is None:
             return deleted_total
 
-        encoded_values = ",".join(json.dumps(value) for value in values)
-        deleted = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/{table}",
-            headers=headers,
-            params={
-                key_column: f"in.({encoded_values})",
-                "sync_id": f"neq.{sync_id}",
-            },
-            timeout=120,
-        )
-        deleted.raise_for_status()
-        deleted_total += len(values)
-        print(f"Limpieza {table}: {deleted_total:,} filas anteriores eliminadas")
+        while True:
+            pending = requests.get(
+                f"{SUPABASE_URL}/rest/v1/{table}",
+                headers=headers,
+                params={
+                    "select": key_column,
+                    "sync_id": f"eq.{stale_sync_id}",
+                    "limit": str(batch_size),
+                },
+                timeout=120,
+            )
+            rows = checked_json(pending, f"Consulta de filas anteriores en {table}")
+            values = [row[key_column] for row in rows]
+            if not values:
+                break
+
+            encoded_values = ",".join(json.dumps(value) for value in values)
+            deleted = requests.delete(
+                f"{SUPABASE_URL}/rest/v1/{table}",
+                headers=headers,
+                params={
+                    key_column: f"in.({encoded_values})",
+                    "sync_id": f"eq.{stale_sync_id}",
+                },
+                timeout=120,
+            )
+            if not deleted.ok:
+                raise RuntimeError(
+                    f"Limpieza de {table} falló (HTTP {deleted.status_code}): "
+                    f"{deleted.text[:1000]}"
+                )
+            deleted_total += len(values)
+            print(f"Limpieza {table}: {deleted_total:,} filas anteriores eliminadas")
 
 # Primero se eliminan las imágenes para respetar la relación foránea; luego,
 # las sesiones antiguas ya quedan sin hijos y se pueden borrar sin cascadas.
