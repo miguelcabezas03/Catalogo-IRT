@@ -7,12 +7,14 @@ import {
   Columns3,
   Download,
   Expand,
+  ExternalLink,
   FileImage,
   FolderOpen,
   GripVertical,
   LoaderCircle,
   LogOut,
   RotateCcw,
+  RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -54,10 +56,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { AuditValidationPanel } from "@/components/audit-validation-panel";
 import {
   type CatalogImage,
+  type DatabricksRunStatus,
   type ReviewStatus,
   type UserRole,
   deleteCatalogImage,
   getCurrentUser,
+  getDatabricksRefreshStatus,
   hydrateImageUrls,
   isBackendConfigured,
   loadCatalog,
@@ -66,6 +70,7 @@ import {
   signIn,
   signOut,
   supabase,
+  triggerDatabricksRefresh,
   uploadCatalogFiles,
 } from "@/lib/catalog";
 
@@ -108,6 +113,8 @@ export default function Home() {
   const [errorNotice, setErrorNotice] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [refreshingDatabricks, setRefreshingDatabricks] = useState(false);
+  const [databricksRun, setDatabricksRun] = useState<DatabricksRunStatus | null>(null);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [visibleLimit, setVisibleLimit] = useState(60);
   const [validationSplit, setValidationSplit] = useState(50);
@@ -183,6 +190,49 @@ export default function Home() {
       void client.removeChannel(channel);
     };
   }, [role]);
+
+  useEffect(() => {
+    if (!isAdmin || !databricksRun?.runId) return;
+    if (["TERMINATED", "SKIPPED", "INTERNAL_ERROR"].includes(databricksRun.lifeCycleState)) return;
+
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const next = await getDatabricksRefreshStatus(databricksRun.runId);
+        if (!active) return;
+        setDatabricksRun(next);
+        if (next.lifeCycleState === "TERMINATED") {
+          if (next.resultState === "SUCCESS") {
+            setImages(await loadCatalog());
+            showNotice("Databricks terminó la actualización correctamente.");
+          } else {
+            showNotice(
+              `Databricks terminó con estado ${next.resultState ?? "desconocido"}.`,
+              true,
+            );
+          }
+          return;
+        }
+        if (["SKIPPED", "INTERNAL_ERROR"].includes(next.lifeCycleState)) {
+          showNotice(next.stateMessage || "Databricks no pudo completar la actualización.", true);
+          return;
+        }
+        timer = setTimeout(() => void poll(), 12_000);
+      } catch (error) {
+        if (!active) return;
+        showNotice(
+          error instanceof Error ? error.message : "No se pudo consultar el estado de Databricks.",
+          true,
+        );
+      }
+    };
+    timer = setTimeout(() => void poll(), 8_000);
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [databricksRun?.runId, databricksRun?.lifeCycleState, isAdmin]);
 
   const countries = useMemo(
     () => ["Todos", ...Array.from(new Set(images.map((item) => item.country)))],
@@ -466,6 +516,27 @@ export default function Home() {
     }
   }
 
+  async function refreshDatabricksData() {
+    if (!isAdmin || refreshingDatabricks) return;
+    setRefreshingDatabricks(true);
+    try {
+      const run = await triggerDatabricksRefresh();
+      setDatabricksRun(run);
+      showNotice(
+        run.alreadyRunning
+          ? `Databricks ya estaba actualizando los datos (ejecución ${run.runId}).`
+          : `Actualización iniciada en Databricks (ejecución ${run.runId}).`,
+      );
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : "No se pudo iniciar la actualización.",
+        true,
+      );
+    } finally {
+      setRefreshingDatabricks(false);
+    }
+  }
+
   function clearFilters() {
     setSearchQuery("");
     setCountry("Todos");
@@ -679,6 +750,15 @@ export default function Home() {
                 <div className="hero-actions flex flex-wrap gap-3">
                   {isAdmin && (
                     <>
+                      <Button
+                        variant="outline"
+                        disabled={refreshingDatabricks}
+                        onClick={() => void refreshDatabricksData()}
+                        className="h-11 rounded-lg border-[#82b9b6] bg-[#edf8f7] px-5 font-semibold text-[#116d68] hover:bg-[#dff2f0]"
+                      >
+                        <RefreshCw className={refreshingDatabricks ? "animate-spin" : ""} />
+                        {refreshingDatabricks ? "Iniciando…" : "Actualizar Databricks"}
+                      </Button>
                       <input
                         ref={fileInput}
                         type="file"
@@ -712,6 +792,29 @@ export default function Home() {
                   )}
                 </div>
               </div>
+              {isAdmin && databricksRun && (
+                <div className="databricks-run-status" role="status">
+                  <div>
+                    <RefreshCw
+                      className={`size-5 ${!["TERMINATED", "SKIPPED", "INTERNAL_ERROR"].includes(databricksRun.lifeCycleState) ? "animate-spin" : ""}`}
+                    />
+                    <span>
+                      <strong>
+                        {databricksRun.lifeCycleState === "TERMINATED"
+                          ? databricksRun.resultState === "SUCCESS"
+                            ? "Actualización completada"
+                            : "Actualización con errores"
+                          : "Actualización en proceso"}
+                      </strong>
+                      Ejecución {databricksRun.runId}
+                      {databricksRun.stateMessage ? ` · ${databricksRun.stateMessage}` : ""}
+                    </span>
+                  </div>
+                  <a href={databricksRun.runPageUrl} target="_blank" rel="noreferrer">
+                    Ver en Databricks <ExternalLink className="size-4" />
+                  </a>
+                </div>
+              )}
               {uploading && (
                 <div className="upload-progress">
                   <div className="flex items-center justify-between text-sm">

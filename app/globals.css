@@ -191,6 +191,48 @@
   background: #f4f8fe;
   padding: 1rem;
 }
+.databricks-run-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid #b9dcda;
+  border-radius: 0.85rem;
+  background: #edf8f7;
+  padding: 0.85rem 1rem;
+  color: #116d68;
+}
+.databricks-run-status > div,
+.databricks-run-status a {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.databricks-run-status span {
+  display: flex;
+  flex-direction: column;
+  color: #476f6d;
+  font-size: 0.78rem;
+}
+.databricks-run-status strong {
+  color: #0f5d59;
+  font-size: 0.9rem;
+}
+.databricks-run-status a {
+  flex: none;
+  border-radius: 0.55rem;
+  background: white;
+  padding: 0.48rem 0.7rem;
+  color: #116d68;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-decoration: none;
+  box-shadow: inset 0 0 0 1px #b9dcda;
+}
+.databricks-run-status a:hover {
+  background: #dff2f0;
+}
 .filter-shell {
   border: 1px solid #d7e1ee;
   border-radius: 1rem;
@@ -1232,6 +1274,13 @@
   }
 }
 @media (max-width: 640px) {
+  .databricks-run-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .databricks-run-status a {
+    justify-content: center;
+  }
   .page-shell {
     padding-inline: 1rem;
     padding-block: 1.25rem;
