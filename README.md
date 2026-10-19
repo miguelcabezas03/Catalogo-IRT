@@ -43,6 +43,8 @@ La consolidación de Databricks usa automáticamente las tres `OlaID` más recie
 
 La primera sincronización deja las imágenes en **Sin observaciones**. En sincronizaciones posteriores, las imágenes nuevas quedan en **Sin revisar** y las ya existentes conservan su observación. Los cambios de ambos perfiles se actualizan en tiempo real y el Excel usa el estado visible más reciente.
 
+El administrador también dispone de **Actualizar Databricks**. El botón invoca la Edge Function protegida `trigger-databricks-job`, evita iniciar una ejecución duplicada y consulta su estado hasta terminar. Para habilitarlo, desplegar la función y configurar en Supabase los secretos `DATABRICKS_HOST`, `DATABRICKS_TOKEN` y `DATABRICKS_JOB_ID`. El token permanece exclusivamente en el servidor y nunca se publica en GitHub ni se envía al navegador.
+
 Por seguridad del navegador no se puede guardar una ruta como `C:\Catalogos` ni leerla sin permiso permanente. El administrador elige la carpeta completa desde **Seleccionar carpeta** cada vez que quiera sincronizarla; la aplicación copia únicamente las imágenes a Supabase. Así el visualizador puede abrirlas aunque el computador del administrador esté apagado.
 
 ## Desarrollo local
