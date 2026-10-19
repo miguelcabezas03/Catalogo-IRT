@@ -117,9 +117,14 @@ begin
   get diagnostics deleted_images = row_count;
 
   with doomed as (
-    select audit_id
-    from public.audit_validation_sessions
-    where sync_id <> p_sync_id
+    select session_row.audit_id
+    from public.audit_validation_sessions session_row
+    where session_row.sync_id <> p_sync_id
+      and not exists (
+        select 1
+        from public.audit_validation_images image_row
+        where image_row.audit_id = session_row.audit_id
+      )
     limit 100
   )
   delete from public.audit_validation_sessions target
