@@ -162,15 +162,36 @@ def image_payload(row):
 upsert_iterator("audit_validation_sessions", sessions_df.toLocalIterator(), "audit_id", session_payload, session_count)
 upsert_iterator("audit_validation_images", images_df.toLocalIterator(), "image_key", image_payload, image_count)
 
-# La función SQL elimina en lotes los registros de sincronizaciones anteriores.
-# Esto evita el error 500 que produce un DELETE masivo desde la API REST.
-cleanup = requests.post(
-    f"{SUPABASE_URL}/rest/v1/rpc/cleanup_audit_validation",
-    headers={**headers, "Prefer": "return=minimal"},
-    json={"p_sync_id": sync_id},
-    timeout=300,
-)
-cleanup.raise_for_status()
+# Cada llamada SQL elimina un solo lote y confirma su propia transacción.
+# Repetir llamadas pequeñas evita el timeout que causaba el error HTTP 500.
+deleted_images_total = 0
+deleted_sessions_total = 0
+while True:
+    cleanup = requests.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/cleanup_audit_validation_batch",
+        headers={**headers, "Prefer": "return=representation"},
+        json={"p_sync_id": sync_id},
+        timeout=120,
+    )
+    if not cleanup.ok:
+        raise RuntimeError(
+            "Falló la limpieza de Supabase "
+            f"(HTTP {cleanup.status_code}): {cleanup.text[:1000]}"
+        )
+
+    cleanup_rows = cleanup.json()
+    cleanup_result = cleanup_rows[0] if cleanup_rows else {}
+    deleted_images = int(cleanup_result.get("images_deleted", 0))
+    deleted_sessions = int(cleanup_result.get("sessions_deleted", 0))
+    deleted_images_total += deleted_images
+    deleted_sessions_total += deleted_sessions
+    print(
+        "Limpieza anterior: "
+        f"{deleted_images_total:,} imágenes y "
+        f"{deleted_sessions_total:,} auditorías eliminadas"
+    )
+    if deleted_images == 0 and deleted_sessions == 0:
+        break
 
 joined.unpersist()
 print(f"Sincronización terminada. Código: {sync_id}")
