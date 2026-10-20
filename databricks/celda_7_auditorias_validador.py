@@ -6,6 +6,7 @@
 #     = e_sv_kolatam_trad.slv_ru_interview_attach_e_sv_kolatam_trad.RU03_InterviewID
 
 import json
+import time
 import uuid
 import requests
 from pyspark.sql import functions as F
@@ -18,6 +19,7 @@ SYNC_PASSWORD = dbutils.secrets.get(scope="catalogo-irt", key="sync-password")
 IMAGE_TABLE = "e_sv_kolatam_trad.slv_ru_interview_attach_e_sv_kolatam_trad"
 AUDIT_TABLE = "storeview.slv_sv_ceres_ag_export"
 BATCH_SIZE = 500
+MAX_REQUEST_RETRIES = 3
 MAX_SESSIONS = 100000
 MAX_IMAGES = 500000
 
@@ -99,7 +101,9 @@ if session_count > MAX_SESSIONS or image_count > MAX_IMAGES:
         "Revisa el filtro de Fecha_del_audito antes de continuar."
     )
 
-auth_response = requests.post(
+http = requests.Session()
+
+auth_response = http.post(
     f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
     headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
     json={"email": SYNC_EMAIL, "password": SYNC_PASSWORD},
@@ -116,30 +120,64 @@ headers = {
 sync_id = str(uuid.uuid4())
 
 def upsert_iterator(table, rows, conflict, row_mapper, total):
+    def send_batch(batch, start_row):
+        response = http.post(
+            f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={conflict}",
+            headers=headers,
+            json=batch,
+            timeout=120,
+        )
+        if response.ok:
+            return
+
+        # PostgREST puede devolver HTTP 500 cuando una transacción de lote
+        # resulta demasiado grande para el tiempo disponible. Dividir solo el
+        # lote que falló conserva la velocidad normal y evita perder toda la
+        # sincronización por un único bloque pesado.
+        if response.status_code in {408, 429, 500, 502, 503, 504} and len(batch) > 1:
+            middle = len(batch) // 2
+            print(
+                f"{table}: lote {start_row:,}-{start_row + len(batch) - 1:,} "
+                f"respondió HTTP {response.status_code}; reintentando en dos partes"
+            )
+            send_batch(batch[:middle], start_row)
+            send_batch(batch[middle:], start_row + middle)
+            return
+
+        # Si el problema llega hasta una sola fila, puede ser transitorio. Se
+        # hacen unos pocos reintentos y, si persiste, se informa el cuerpo de
+        # la respuesta y la clave exacta para poder diagnosticarlo.
+        for attempt in range(1, MAX_REQUEST_RETRIES + 1):
+            wait_seconds = 2 ** attempt
+            time.sleep(wait_seconds)
+            response = http.post(
+                f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={conflict}",
+                headers=headers,
+                json=batch,
+                timeout=120,
+            )
+            if response.ok:
+                return
+
+        first_row = batch[0] if batch else {}
+        row_identifier = first_row.get(conflict, "sin-clave")
+        raise RuntimeError(
+            f"Upsert en {table} falló para {conflict}={row_identifier} "
+            f"(HTTP {response.status_code}): {response.text[:1500]}"
+        )
+
     batch = []
     completed = 0
     for row in rows:
         batch.append(row_mapper(row))
         if len(batch) < BATCH_SIZE:
             continue
-        response = requests.post(
-            f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={conflict}",
-            headers=headers,
-            json=batch,
-            timeout=120,
-        )
-        response.raise_for_status()
+        send_batch(batch, completed + 1)
         completed += len(batch)
         print(f"{table}: {completed:,} / {total:,}")
         batch = []
     if batch:
-        response = requests.post(
-            f"{SUPABASE_URL}/rest/v1/{table}?on_conflict={conflict}",
-            headers=headers,
-            json=batch,
-            timeout=120,
-        )
-        response.raise_for_status()
+        send_batch(batch, completed + 1)
         completed += len(batch)
         print(f"{table}: {completed:,} / {total:,}")
 
@@ -176,7 +214,7 @@ def checked_json(response, operation):
 
 def find_stale_sync_id(table):
     for direction in ("asc", "desc"):
-        response = requests.get(
+        response = http.get(
             f"{SUPABASE_URL}/rest/v1/{table}",
             headers=headers,
             params={
@@ -199,7 +237,7 @@ def delete_stale_rows(table, key_column, batch_size):
             return deleted_total
 
         while True:
-            pending = requests.get(
+            pending = http.get(
                 f"{SUPABASE_URL}/rest/v1/{table}",
                 headers=headers,
                 params={
@@ -215,7 +253,7 @@ def delete_stale_rows(table, key_column, batch_size):
                 break
 
             encoded_values = ",".join(json.dumps(value) for value in values)
-            deleted = requests.delete(
+            deleted = http.delete(
                 f"{SUPABASE_URL}/rest/v1/{table}",
                 headers=headers,
                 params={
