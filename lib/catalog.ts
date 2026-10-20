@@ -263,10 +263,13 @@ export async function loadAuditSessions(): Promise<AuditSession[]> {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('audit_validation_sessions')
-      .select('audit_id,image_count,audit_data,updated_at')
+      // The full audit_data JSON makes the 9k+ row list too heavy and can
+      // exhaust PostgREST's response timeout. Only request the three fields
+      // used by the list filters; the complete record is loaded on demand.
+      .select('audit_id,image_count,updated_at,country:audit_data->>Pais,status:audit_data->>Estado,audit_date:audit_data->>Fecha_del_audito')
       .order('audit_id')
       .range(from, from + pageSize - 1);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
     const page = (data ?? []) as Record<string, unknown>[];
     rows.push(...page);
     if (page.length < pageSize) break;
@@ -274,9 +277,29 @@ export async function loadAuditSessions(): Promise<AuditSession[]> {
   return rows.map((row) => ({
     auditId: String(row.audit_id),
     imageCount: Number(row.image_count ?? 0),
-    data: (row.audit_data && typeof row.audit_data === 'object' ? row.audit_data : {}) as Record<string, unknown>,
+    data: {
+      Pais: row.country ?? '',
+      Estado: row.status ?? '',
+      Fecha_del_audito: row.audit_date ?? '',
+    },
     updatedAt: new Date(String(row.updated_at)).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }),
   }));
+}
+
+export async function loadAuditSession(auditId: string): Promise<AuditSession> {
+  if (!supabase || !auditId) throw new Error('No se recibió el código de auditoría.');
+  const { data, error } = await supabase
+    .from('audit_validation_sessions')
+    .select('audit_id,image_count,audit_data,updated_at')
+    .eq('audit_id', auditId)
+    .single();
+  if (error) throw new Error(error.message);
+  return {
+    auditId: String(data.audit_id),
+    imageCount: Number(data.image_count ?? 0),
+    data: (data.audit_data && typeof data.audit_data === 'object' ? data.audit_data : {}) as Record<string, unknown>,
+    updatedAt: new Date(String(data.updated_at)).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }),
+  };
 }
 
 export async function loadAuditImages(auditId: string): Promise<AuditImage[]> {
@@ -290,7 +313,7 @@ export async function loadAuditImages(auditId: string): Promise<AuditImage[]> {
       .eq('audit_id', auditId)
       .order('image_key')
       .range(from, from + pageSize - 1);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
     const page = ((data ?? []) as { image_key: unknown; audit_id: unknown; image_url: unknown }[]).map((row) => ({
       imageKey: String(row.image_key),
       auditId: String(row.audit_id),
