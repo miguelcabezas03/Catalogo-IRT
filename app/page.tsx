@@ -126,6 +126,7 @@ export default function Home() {
   const isAdmin = role === "admin";
   const canReview = role === "admin" || role === "viewer";
   const isReadOnly = role === "validation";
+  const canRefreshDatabricks = isAdmin || isReadOnly;
   const roleLabel = isAdmin ? "Administrador" : isReadOnly ? "Validación" : "Visualizador";
 
   useEffect(() => {
@@ -192,7 +193,7 @@ export default function Home() {
   }, [role]);
 
   useEffect(() => {
-    if (!isAdmin || !databricksRun?.runId) return;
+    if (!canRefreshDatabricks || !databricksRun?.runId) return;
     if (["TERMINATED", "SKIPPED", "INTERNAL_ERROR"].includes(databricksRun.lifeCycleState)) return;
 
     let active = true;
@@ -232,7 +233,7 @@ export default function Home() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [databricksRun?.runId, databricksRun?.lifeCycleState, isAdmin]);
+  }, [canRefreshDatabricks, databricksRun?.runId, databricksRun?.lifeCycleState]);
 
   const countries = useMemo(
     () => ["Todos", ...Array.from(new Set(images.map((item) => item.country)))],
@@ -517,7 +518,7 @@ export default function Home() {
   }
 
   async function refreshDatabricksData() {
-    if (!isAdmin || refreshingDatabricks) return;
+    if (!canRefreshDatabricks || refreshingDatabricks) return;
     setRefreshingDatabricks(true);
     try {
       const run = await triggerDatabricksRefresh();
@@ -748,17 +749,19 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="hero-actions flex flex-wrap gap-3">
+                  {canRefreshDatabricks && (
+                    <Button
+                      variant="outline"
+                      disabled={refreshingDatabricks}
+                      onClick={() => void refreshDatabricksData()}
+                      className="h-11 rounded-lg border-[#82b9b6] bg-[#edf8f7] px-5 font-semibold text-[#116d68] hover:bg-[#dff2f0]"
+                    >
+                      <RefreshCw className={refreshingDatabricks ? "animate-spin" : ""} />
+                      {refreshingDatabricks ? "Iniciando…" : "Actualizar Databricks"}
+                    </Button>
+                  )}
                   {isAdmin && (
                     <>
-                      <Button
-                        variant="outline"
-                        disabled={refreshingDatabricks}
-                        onClick={() => void refreshDatabricksData()}
-                        className="h-11 rounded-lg border-[#82b9b6] bg-[#edf8f7] px-5 font-semibold text-[#116d68] hover:bg-[#dff2f0]"
-                      >
-                        <RefreshCw className={refreshingDatabricks ? "animate-spin" : ""} />
-                        {refreshingDatabricks ? "Iniciando…" : "Actualizar Databricks"}
-                      </Button>
                       <input
                         ref={fileInput}
                         type="file"
@@ -792,7 +795,7 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              {isAdmin && databricksRun && (
+              {canRefreshDatabricks && databricksRun && (
                 <div className="databricks-run-status" role="status">
                   <div>
                     <RefreshCw
