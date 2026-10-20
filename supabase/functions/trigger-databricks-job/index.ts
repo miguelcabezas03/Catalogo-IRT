@@ -1,5 +1,3 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -23,6 +21,42 @@ type DatabricksRun = {
   };
 };
 
+type SupabaseUser = {
+  id?: string;
+};
+
+async function getAuthenticatedRole(
+  supabaseUrl: string,
+  supabaseKey: string,
+  authorization: string,
+) {
+  const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      Authorization: authorization,
+      apikey: supabaseKey,
+    },
+  });
+  if (!authResponse.ok) return null;
+
+  const user = (await authResponse.json().catch(() => ({}))) as SupabaseUser;
+  if (!user.id) return null;
+
+  const profileResponse = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role&limit=1`,
+    {
+      headers: {
+        Authorization: authorization,
+        apikey: supabaseKey,
+        Accept: "application/json",
+      },
+    },
+  );
+  if (!profileResponse.ok) return null;
+
+  const profiles = (await profileResponse.json().catch(() => [])) as Array<{ role?: unknown }>;
+  return String(profiles[0]?.role ?? "");
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Método no permitido." }, 405);
@@ -35,20 +69,9 @@ Deno.serve(async (request) => {
     return json({ error: "La sesión no es válida." }, 401);
   }
 
-  const accessToken = authorization.replace(/^Bearer\s+/i, "");
-  const client = createClient(supabaseUrl, supabaseKey, {
-    global: { headers: { Authorization: authorization } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data: auth, error: authError } = await client.auth.getUser(accessToken);
-  if (authError || !auth.user) return json({ error: "La sesión expiró." }, 401);
-
-  const { data: profile, error: profileError } = await client
-    .from("profiles")
-    .select("role")
-    .eq("id", auth.user.id)
-    .single();
-  if (profileError || !["admin", "validation"].includes(String(profile?.role))) {
+  const role = await getAuthenticatedRole(supabaseUrl, supabaseKey, authorization);
+  if (!role) return json({ error: "La sesión expiró." }, 401);
+  if (!["admin", "validation"].includes(role)) {
     return json({ error: "Solo Administrador o Validación pueden actualizar Databricks." }, 403);
   }
 
