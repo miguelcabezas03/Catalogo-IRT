@@ -83,6 +83,8 @@ function formatAuditDate(value: string) {
   return `${day}/${month}/${year}`;
 }
 
+const AUDITS_PER_PAGE = 100;
+
 export function AuditValidationPanel() {
   const [sessions, setSessions] = useState<AuditSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<AuditSession | null>(null);
@@ -93,6 +95,7 @@ export function AuditValidationPanel() {
   const [country, setCountry] = useState("Todos");
   const [status, setStatus] = useState("Todos");
   const [auditDateFilter, setAuditDateFilter] = useState("");
+  const [auditPage, setAuditPage] = useState(0);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingImages, setLoadingImages] = useState(false);
   const [error, setError] = useState("");
@@ -127,6 +130,16 @@ export function AuditValidationPanel() {
       return matchesSearch && matchesCountry && matchesStatus && matchesDate;
     });
   }, [auditDateFilter, country, search, sessions, status]);
+
+  const auditPageCount = Math.max(1, Math.ceil(filteredSessions.length / AUDITS_PER_PAGE));
+  const visibleSessions = useMemo(
+    () =>
+      filteredSessions.slice(
+        auditPage * AUDITS_PER_PAGE,
+        (auditPage + 1) * AUDITS_PER_PAGE,
+      ),
+    [auditPage, filteredSessions],
+  );
 
   const auditFields = useMemo(() => {
     if (!selectedSession) return [];
@@ -184,6 +197,10 @@ export function AuditValidationPanel() {
   useEffect(() => {
     void refreshSessions();
   }, []);
+
+  useEffect(() => {
+    setAuditPage(0);
+  }, [auditDateFilter, country, search, status]);
 
   return (
     <section className="validation-pane audit-pane" aria-label="Validación de auditorías">
@@ -267,7 +284,30 @@ export function AuditValidationPanel() {
             )}
           </div>
           <div className="audit-code-summary">
-            <strong>{filteredSessions.length}</strong> auditorías
+            <span>
+              <strong>{filteredSessions.length}</strong> auditorías
+            </span>
+            {filteredSessions.length > AUDITS_PER_PAGE && (
+              <span className="flex items-center gap-1.5 text-[0.68rem]">
+                <button
+                  type="button"
+                  onClick={() => setAuditPage((value) => Math.max(0, value - 1))}
+                  disabled={auditPage === 0}
+                  className="rounded border border-[#cbd9ea] bg-white px-2 py-1 disabled:opacity-40"
+                >
+                  Anterior
+                </button>
+                <span>{auditPage + 1} / {auditPageCount}</span>
+                <button
+                  type="button"
+                  onClick={() => setAuditPage((value) => Math.min(auditPageCount - 1, value + 1))}
+                  disabled={auditPage >= auditPageCount - 1}
+                  className="rounded border border-[#cbd9ea] bg-white px-2 py-1 disabled:opacity-40"
+                >
+                  Siguiente
+                </button>
+              </span>
+            )}
           </div>
           <div className="audit-code-list">
             {loadingSessions ? (
@@ -275,7 +315,7 @@ export function AuditValidationPanel() {
                 <LoaderCircle className="size-5 animate-spin" /> Cargando códigos…
               </div>
             ) : filteredSessions.length ? (
-              filteredSessions.map((session) => (
+              visibleSessions.map((session) => (
                 <button
                   type="button"
                   key={session.auditId}
