@@ -48,8 +48,8 @@ Deno.serve(async (request) => {
     .select("role")
     .eq("id", auth.user.id)
     .single();
-  if (profileError || profile?.role !== "admin") {
-    return json({ error: "Solo el administrador puede actualizar Databricks." }, 403);
+  if (profileError || !["admin", "validation"].includes(String(profile?.role))) {
+    return json({ error: "Solo Administrador o Validación pueden actualizar Databricks." }, 403);
   }
 
   const host = Deno.env.get("DATABRICKS_HOST")?.replace(/\/$/, "");
