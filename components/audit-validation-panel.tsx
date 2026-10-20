@@ -19,6 +19,7 @@ import {
   type AuditImage,
   type AuditSession,
   loadAuditImages,
+  loadAuditSession,
   loadAuditSessions,
 } from "@/lib/catalog";
 
@@ -163,7 +164,12 @@ export function AuditValidationPanel() {
     setLoadingImages(true);
     setError("");
     try {
-      setImages(await loadAuditImages(session.auditId));
+      const [details, auditImages] = await Promise.all([
+        loadAuditSession(session.auditId),
+        loadAuditImages(session.auditId),
+      ]);
+      setSelectedSession(details);
+      setImages(auditImages);
     } catch (loadError) {
       setError(
         loadError instanceof Error
